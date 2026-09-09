@@ -27,22 +27,22 @@ type KioskConfig struct {
 }
 
 type AppConfig struct {
-	Port              int         `json:"port"`
-	LANPrinters       []string    `json:"lan_printers,omitempty"`
-	WebViewURL        string      `json:"webview_url,omitempty"`
-	WebViewPIN        string      `json:"webview_pin,omitempty"`
-	WebViewEnabled    bool        `json:"webview_enabled"`
-	WebViewExitCorner string      `json:"webview_exit_corner,omitempty"`
-	NetworkPrinting   bool        `json:"network_printing"`
-	Kiosk             KioskConfig `json:"kiosk,omitempty"`
+	Port               int         `json:"port"`
+	LANPrinters        []string    `json:"lan_printers,omitempty"`
+	WebViewURL         string      `json:"webview_url,omitempty"`
+	WebViewPIN         string      `json:"webview_pin,omitempty"`
+	WebViewEnabled     bool        `json:"webview_enabled"`
+	WebViewExitCorners []string    `json:"webview_exit_corners,omitempty"`
+	NetworkPrinting    bool        `json:"network_printing"`
+	Kiosk              KioskConfig `json:"kiosk,omitempty"`
 }
 
 func defaults() AppConfig {
 	return AppConfig{
-		Port:              0,
-		NetworkPrinting:   false,
-		WebViewPIN:        "0000",
-		WebViewExitCorner: "top-right",
+		Port:               0,
+		NetworkPrinting:    false,
+		WebViewPIN:         "0000",
+		WebViewExitCorners: []string{"top-right"},
 		Kiosk: KioskConfig{
 			Enabled: false,
 		},
@@ -320,29 +320,75 @@ func (cm *Manager) SetWebViewEnabled(v bool) error {
 	return cm.saveLocked()
 }
 
-// GetWebViewExitCorner returns the configured exit gesture corner.
-// Valid values: "top-right" (default), "top-left", "bottom-right", "bottom-left".
-func (cm *Manager) GetWebViewExitCorner() string {
-	cm.mu.RLock()
-	defer cm.mu.RUnlock()
-	if cm.Data.WebViewExitCorner == "" {
-		return "top-right"
-	}
-	return cm.Data.WebViewExitCorner
+var validCorners = map[string]bool{
+	"top-left":     true,
+	"top-right":    true,
+	"bottom-left":  true,
+	"bottom-right": true,
 }
 
-// SetWebViewExitCorner validates and persists the exit gesture corner.
-func (cm *Manager) SetWebViewExitCorner(corner string) error {
-	trimmed := strings.ToLower(strings.TrimSpace(corner))
-	switch trimmed {
-	case "top-right", "top-left", "bottom-right", "bottom-left":
-	default:
-		return fmt.Errorf("invalid exit corner: %q (must be top-right, top-left, bottom-right, or bottom-left)", corner)
+// GetWebViewExitCorners returns the configured exit gesture corners.
+// Defaults to ["top-right"] if none are configured.
+func (cm *Manager) GetWebViewExitCorners() []string {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+
+	var result []string
+	seen := make(map[string]bool)
+
+	for _, c := range cm.Data.WebViewExitCorners {
+		c = strings.ToLower(strings.TrimSpace(c))
+		if validCorners[c] && !seen[c] {
+			seen[c] = true
+			result = append(result, c)
+		}
 	}
+
+	if len(result) == 0 {
+		return []string{"top-right"}
+	}
+	return result
+}
+
+// SetWebViewExitCorners validates and persists the list of active exit gesture corners.
+func (cm *Manager) SetWebViewExitCorners(corners []string) error {
+	var valid []string
+	seen := make(map[string]bool)
+
+	for _, c := range corners {
+		c = strings.ToLower(strings.TrimSpace(c))
+		if c == "" {
+			continue
+		}
+		if !validCorners[c] {
+			return fmt.Errorf("invalid exit corner: %q (must be top-right, top-left, bottom-right, or bottom-left)", c)
+		}
+		if !seen[c] {
+			seen[c] = true
+			valid = append(valid, c)
+		}
+	}
+
+	if len(valid) == 0 {
+		return errors.New("at least one exit corner must be selected")
+	}
+
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
-	cm.Data.WebViewExitCorner = trimmed
+	cm.Data.WebViewExitCorners = valid
 	return cm.saveLocked()
+}
+
+// GetWebViewExitCorner returns a string representation of the configured exit corner(s).
+func (cm *Manager) GetWebViewExitCorner() string {
+	corners := cm.GetWebViewExitCorners()
+	return strings.Join(corners, ",")
+}
+
+// SetWebViewExitCorner validates and persists exit gesture corner(s) (supports single or comma-separated).
+func (cm *Manager) SetWebViewExitCorner(corner string) error {
+	parts := strings.Split(corner, ",")
+	return cm.SetWebViewExitCorners(parts)
 }
 
 func (cm *Manager) GetLANPrinters() []string {

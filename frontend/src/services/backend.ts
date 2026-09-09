@@ -13,7 +13,7 @@ import {
   Printers,
   SetNetworkPrintingEnabled,
   SetWebViewEnabled,
-  SetWebViewExitCorner,
+  SetWebViewExitCorners,
   SetWebViewPIN,
   SetWebViewURL,
   SetWindowFullscreen,
@@ -35,7 +35,7 @@ import {
   apiGetWebViewConfig,
   apiRemoveLANPrinter,
   apiSetWebViewEnabled,
-  apiSetWebViewExitCorner,
+  apiSetWebViewExitCorners,
   apiSetWebViewURL,
   apiTestPrint,
   ApiAppVariable,
@@ -72,7 +72,7 @@ export interface IBackendService {
   getWebViewConfig(): Promise<main.WebViewConfig | ApiWebViewConfig>;
   setWebViewURL(url: string): Promise<void>;
   setWebViewEnabled(enabled: boolean): Promise<void>;
-  setWebViewExitCorner(corner: string): Promise<void>;
+  setWebViewExitCorners(corners: string[]): Promise<void>;
   setWebViewPIN(pin: string): Promise<void>;
   validatePIN(pin: string): Promise<boolean>;
   setWindowFullscreen(fullscreen: boolean): Promise<void>;
@@ -154,8 +154,8 @@ class WailsBackendService implements IBackendService {
     return SetWebViewEnabled(enabled);
   }
 
-  setWebViewExitCorner(corner: string): Promise<void> {
-    return SetWebViewExitCorner(corner);
+  setWebViewExitCorners(corners: string[]): Promise<void> {
+    return SetWebViewExitCorners(corners);
   }
 
   setWebViewPIN(pin: string): Promise<void> {
@@ -271,8 +271,8 @@ class RemoteBackendService implements IBackendService {
     await apiSetWebViewEnabled(enabled);
   }
 
-  async setWebViewExitCorner(corner: string): Promise<void> {
-    await apiSetWebViewExitCorner(corner);
+  async setWebViewExitCorners(corners: string[]): Promise<void> {
+    await apiSetWebViewExitCorners(corners);
   }
 
   setWebViewPIN(): Promise<void> {
@@ -388,8 +388,8 @@ class DynamicBackendService implements IBackendService {
     return this.service.setWebViewEnabled(enabled);
   }
 
-  setWebViewExitCorner(corner: string): Promise<void> {
-    return this.service.setWebViewExitCorner(corner);
+  setWebViewExitCorners(corners: string[]): Promise<void> {
+    return this.service.setWebViewExitCorners(corners);
   }
 
   setWebViewPIN(pin: string): Promise<void> {

@@ -1,4 +1,4 @@
-import { useContext, useEffect, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { WebViewContext } from "../contexts/WebViewContext";
 import { AppContext } from "../contexts/AppContext";
@@ -54,8 +54,17 @@ export default function WebViewDialog() {
   const cfg = data.config;
 
   const [url, setUrl] = useState(cfg?.url ?? "");
-  const [exitCorner, setExitCorner] = useState(cfg?.exitCorner ?? "top-right");
+  const [exitCorners, setExitCorners] = useState<string[]>(() => {
+    if (cfg?.exitCorners && cfg.exitCorners.length > 0) {
+      return cfg.exitCorners;
+    }
+    return ["top-right"];
+  });
   const [localError, setLocalError] = useState<string | null>(null);
+  const [urlSaveStatus, setUrlSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
+  const [cornerSaveStatus, setCornerSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
+  const isInputFocused = useRef(false);
+  const initialUrlLoaded = useRef(false);
   const [serverUrl, setServerUrl] = useState(
     window.location.origin + "/"
   );
@@ -83,16 +92,73 @@ export default function WebViewDialog() {
    * Keep URL and Exit Corner fields synchronized with configuration.
    */
   useEffect(() => {
-    if (cfg?.url) {
-      setUrl(cfg.url);
+    if (cfg?.url !== undefined) {
+      if (!initialUrlLoaded.current || (!isInputFocused.current && urlSaveStatus === "idle")) {
+        setUrl(cfg.url);
+        initialUrlLoaded.current = true;
+      }
     }
   }, [cfg?.url]);
 
+  /*
+   * 1-second debounce auto-save for POS Web Application URL textfield.
+   */
   useEffect(() => {
-    if (cfg?.exitCorner) {
-      setExitCorner(cfg.exitCorner);
+    if (!initialUrlLoaded.current) {
+      if (cfg?.url !== undefined) {
+        initialUrlLoaded.current = true;
+      }
+      return;
     }
-  }, [cfg?.exitCorner]);
+
+    const trimmed = url.trim();
+
+    if (!trimmed) {
+      setLocalError("URL cannot be empty.");
+      setUrlSaveStatus("idle");
+      return;
+    }
+
+    if (!isValidUrl(trimmed)) {
+      setLocalError(
+        "Enter a valid HTTP or HTTPS URL for an Odoo POS Self Order page."
+      );
+      setUrlSaveStatus("idle");
+      return;
+    }
+
+    setLocalError(null);
+
+    if (trimmed === cfg?.url) {
+      setUrlSaveStatus("idle");
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setUrlSaveStatus("saving");
+      try {
+        await gate(async () => {
+          await actions.saveURL(trimmed);
+        });
+        setUrlSaveStatus("saved");
+        setTimeout(() => {
+          setUrlSaveStatus("idle");
+        }, 2000);
+      } catch (err: unknown) {
+        setLocalError(String(err) || "Failed to auto-save URL.");
+        setUrlSaveStatus("idle");
+      }
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [url, cfg?.url]);
+
+  const remoteCornersKey = (cfg?.exitCorners || []).join(",");
+  useEffect(() => {
+    if (cfg?.exitCorners && cfg.exitCorners.length > 0 && cornerSaveStatus === "idle") {
+      setExitCorners(cfg.exitCorners);
+    }
+  }, [remoteCornersKey]);
 
   /*
    * Load the local server address used for remote access.
@@ -115,51 +181,33 @@ export default function WebViewDialog() {
     fetchServerInfo();
   }, []);
 
-  const saveSettings = async (): Promise<boolean> => {
-    setLocalError(null);
-
-    const trimmedUrl = url.trim();
-
-    if (!trimmedUrl) {
-      setLocalError("URL cannot be empty.");
-      return false;
-    }
-
-    if (!isValidUrl(trimmedUrl)) {
-      setLocalError(
-        "Enter a valid HTTP or HTTPS URL for an Odoo POS Self Order page."
-      );
-      return false;
-    }
-
-    const saved = await gate(async () => {
-      try {
-        await actions.saveURL(trimmedUrl);
-        await actions.saveExitCorner(exitCorner);
-        await actions.toggleEnabled(true);
-
-        if (isWails || isLocalhost) {
-          await actions.enterKiosk();
-        }
-
-        return true;
-      } catch (err: unknown) {
-        setLocalError(String(err) || "Failed to save settings.");
-        return false;
+  const toggleCorner = async (id: string) => {
+    let next: string[];
+    if (exitCorners.includes(id)) {
+      if (exitCorners.length <= 1) {
+        return; // Keep at least one corner selected
       }
-    });
-
-    if (saved === null || saved === false) {
-      return false;
+      next = exitCorners.filter((c) => c !== id);
+    } else {
+      next = [...exitCorners, id];
     }
+    setExitCorners(next);
 
-    toastContext.actions.showToast(
-      "Kiosk settings saved and opened",
-      "success"
-    );
-
-    return true;
+    setCornerSaveStatus("saving");
+    try {
+      await gate(async () => {
+        await actions.saveExitCorners(next);
+      });
+      setCornerSaveStatus("saved");
+      setTimeout(() => {
+        setCornerSaveStatus("idle");
+      }, 2000);
+    } catch (err: unknown) {
+      setLocalError(String(err) || "Failed to auto-save exit corners.");
+      setCornerSaveStatus("idle");
+    }
   };
+
 
   const handleOpenKiosk = async () => {
     const targetUrl = url.trim() || cfg?.url;
@@ -173,9 +221,7 @@ export default function WebViewDialog() {
       if (url.trim() && url.trim() !== cfg?.url) {
         await actions.saveURL(url.trim());
       }
-      if (exitCorner && exitCorner !== cfg?.exitCorner) {
-        await actions.saveExitCorner(exitCorner);
-      }
+      await actions.saveExitCorners(exitCorners);
 
       await actions.toggleEnabled(true);
 
@@ -259,20 +305,21 @@ export default function WebViewDialog() {
 
   const dialogActions = [
     {
-      name: "Cancel",
-      label: "Cancel",
+      name: "close",
+      label: "Close",
       onClick: cleanup,
       variant: "secondary" as ActionType,
     },
-    {
-      name: "save",
-      label: isKioskCurrentlyActive
-        ? "Save Changes"
-        : "Save & Open Kiosk",
-      onClick: saveSettings,
-      disabled: !isUrlValid,
-      variant: "primary" as ActionType,
-    },
+    ...(!isKioskCurrentlyActive && canEnable
+      ? [
+          {
+            name: "open",
+            label: "Open Kiosk",
+            onClick: handleOpenKiosk,
+            variant: "primary" as ActionType,
+          },
+        ]
+      : []),
   ];
 
   return (
@@ -486,12 +533,31 @@ export default function WebViewDialog() {
 
             {/* URL */}
             <div className="mt-4">
-              <label
-                htmlFor="kiosk-url"
-                className="mb-1.5 block text-xs font-medium text-gray-700"
-              >
-                POS Web Application URL
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label
+                  htmlFor="kiosk-url"
+                  className="block text-xs font-medium text-gray-700"
+                >
+                  POS Web Application URL
+                </label>
+                {urlSaveStatus === "saving" && (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-medium text-odoo">
+                    <svg className="h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                    </svg>
+                    Saving...
+                  </span>
+                )}
+                {urlSaveStatus === "saved" && (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-medium text-green-600">
+                    <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                    </svg>
+                    Saved
+                  </span>
+                )}
+              </div>
 
               <div className="relative">
                 <input
@@ -499,7 +565,14 @@ export default function WebViewDialog() {
                   type="url"
                   value={url}
                   placeholder="https://your-domain.odoo.com/pos-self/204?access_token=..."
+                  onFocus={() => {
+                    isInputFocused.current = true;
+                  }}
+                  onBlur={() => {
+                    isInputFocused.current = false;
+                  }}
                   onChange={(e) => {
+                    isInputFocused.current = true;
                     setUrl(e.target.value);
                     setLocalError(null);
                   }}
@@ -570,36 +643,64 @@ export default function WebViewDialog() {
 
             {/* Exit Corner Configuration */}
             <div className="mt-4 border-t border-gray-200 pt-3">
-              <label className="mb-1.5 block text-xs font-medium text-gray-700">
-                Exit Gesture Corner
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-xs font-medium text-gray-700">
+                  Exit Gesture Corners
+                </label>
+                <div className="flex items-center gap-2">
+                  {cornerSaveStatus === "saving" && (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-medium text-odoo">
+                      <svg className="h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                      </svg>
+                      Saving...
+                    </span>
+                  )}
+                  {cornerSaveStatus === "saved" && (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-medium text-green-600">
+                      <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                      </svg>
+                      Saved
+                    </span>
+                  )}
+                  <span className="text-[11px] text-gray-400">
+                    {exitCorners.length} selected
+                  </span>
+                </div>
+              </div>
 
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                 {[
                   { id: "top-left", label: "Top Left" },
-                  { id: "top-right", label: "Top Right (Default)" },
+                  { id: "top-right", label: "Top Right" },
                   { id: "bottom-left", label: "Bottom Left" },
                   { id: "bottom-right", label: "Bottom Right" },
-                ].map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => setExitCorner(item.id)}
-                    className={`
-                      flex items-center justify-center rounded-lg border px-2.5 py-2 text-xs font-medium transition-all cursor-pointer text-center
-                      ${exitCorner === item.id
-                        ? "border-odoo bg-odoo/10 text-odoo font-semibold ring-1 ring-odoo shadow-xs"
-                        : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50 hover:border-gray-300"
-                      }
-                    `}
-                  >
-                    {item.label}
-                  </button>
-                ))}
+                ].map((item) => {
+                  const isSelected = exitCorners.includes(item.id);
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      disabled={!canEnable}
+                      onClick={() => toggleCorner(item.id)}
+                      className={`
+                        flex items-center justify-center gap-1.5 rounded-lg border px-2.5 py-2 text-xs font-medium transition-all cursor-pointer text-center
+                        ${isSelected
+                          ? "border-odoo bg-odoo/10 text-odoo font-semibold ring-1 ring-odoo shadow-xs"
+                          : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50 hover:border-gray-300"
+                        }
+                      `}
+                    >
+                      <span>{item.label}</span>
+                    </button>
+                  );
+                })}
               </div>
 
               <p className="mt-1.5 text-[11px] text-gray-500">
-                Tap this corner 4 times quickly to exit fullscreen kiosk and prompt for your admin PIN.
+                Tap any selected corner 4 times quickly to exit fullscreen kiosk and prompt for your admin PIN.
               </p>
             </div>
 
@@ -796,7 +897,7 @@ export default function WebViewDialog() {
 
           <p className="text-[11px] leading-relaxed text-red-500">
             {isWails || isLocalhost
-              ? `To exit fullscreen kiosk mode, tap the ${exitCorner.replace("-", " ")} corner 4 times quickly and enter your admin PIN.`
+              ? `To exit fullscreen kiosk mode, tap any of the configured corners (${exitCorners.map((c) => c.replace("-", " ")).join(", ")}) 4 times quickly and enter your admin PIN.`
               : "Kiosk fullscreen mode runs on the local application (127.0.0.1). This web interface is used to manage the kiosk and remote access settings."}
           </p>
         </div>

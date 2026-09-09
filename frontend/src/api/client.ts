@@ -42,7 +42,7 @@ export interface ApiWebViewConfig {
   url: string;
   enabled: boolean;
   hasPIN: boolean;
-  exitCorner?: string;
+  exitCorners?: string[];
   reloadCount?: number;
 }
 
@@ -202,8 +202,8 @@ export function apiSetWebViewEnabled(enabled: boolean): Promise<{ ok: boolean }>
   return apiPost<{ ok: boolean }>("/api/webview/enabled", { enabled }, true);
 }
 
-export function apiSetWebViewExitCorner(corner: string): Promise<{ ok: boolean }> {
-  return apiPost<{ ok: boolean }>("/api/webview/corner", { corner }, true);
+export function apiSetWebViewExitCorners(corners: string[]): Promise<{ ok: boolean }> {
+  return apiPost<{ ok: boolean }>("/api/webview/corners", { corners }, true);
 }
 
 export function apiTestPrint(printerId: string): Promise<{ ok: boolean }> {

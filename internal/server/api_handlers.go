@@ -45,11 +45,12 @@ type apiPrintersResponse struct {
 }
 
 type apiWebViewConfig struct {
-	URL         string `json:"url"`
-	Enabled     bool   `json:"enabled"`
-	HasPIN      bool   `json:"hasPIN"`
-	ExitCorner  string `json:"exitCorner"`
-	ReloadCount int64  `json:"reloadCount"`
+	URL         string   `json:"url"`
+	Enabled     bool     `json:"enabled"`
+	HasPIN      bool     `json:"hasPIN"`
+	ExitCorner  string   `json:"exitCorner"`
+	ExitCorners []string `json:"exitCorners"`
+	ReloadCount int64    `json:"reloadCount"`
 }
 
 type apiTroubleshootInfo struct {
@@ -145,6 +146,7 @@ func (s *Server) handleGetWebView(c fiber.Ctx) error {
 		Enabled:     s.cfg.GetWebViewEnabled(),
 		HasPIN:      s.cfg.HasWebViewPIN(),
 		ExitCorner:  s.cfg.GetWebViewExitCorner(),
+		ExitCorners: s.cfg.GetWebViewExitCorners(),
 		ReloadCount: s.reloadCount.Load(),
 	})
 }
@@ -282,7 +284,8 @@ func (s *Server) handleSetWebViewEnabled(c fiber.Ctx) error {
 }
 
 type setWebViewExitCornerReq struct {
-	Corner string `json:"corner"`
+	Corner  string   `json:"corner"`
+	Corners []string `json:"corners"`
 }
 
 func (s *Server) handleSetWebViewExitCorner(c fiber.Ctx) error {
@@ -290,7 +293,15 @@ func (s *Server) handleSetWebViewExitCorner(c fiber.Ctx) error {
 	if err := bindJSON(c, &req); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request"})
 	}
-	if err := s.cfg.SetWebViewExitCorner(req.Corner); err != nil {
+	var err error
+	if len(req.Corners) > 0 {
+		err = s.cfg.SetWebViewExitCorners(req.Corners)
+	} else if req.Corner != "" {
+		err = s.cfg.SetWebViewExitCorner(req.Corner)
+	} else {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "corner or corners is required"})
+	}
+	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 	s.mu.RLock()

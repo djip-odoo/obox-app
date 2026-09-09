@@ -395,14 +395,24 @@ func TestApp_PinAuthAndWebAppNavigation(t *testing.T) {
 	testutil.ExpectedContains(t, script, "window.__eposProxyExitInstalled")
 	testutil.ExpectedContains(t, script, "/api/kiosk/exit")
 	testutil.ExpectedContains(t, script, "CORNER_SIZE")
-	testutil.ExpectedContains(t, script, `EXIT_CORNER = "top-right"`)
+	testutil.ExpectedContains(t, script, `EXIT_CORNERS = ["top-right"]`)
 
-	// Test updating exit corner
+	// Test updating exit corner (backwards compatibility)
 	err = app.SetWebViewExitCorner("bottom-left")
 	testutil.ExpectedNoError(t, err)
-	testutil.ExpectedEqual(t, app.GetWebViewConfig().ExitCorner, "bottom-left")
+	testutil.ExpectedLen(t, app.GetWebViewConfig().ExitCorners, 1)
+	testutil.ExpectedEqual(t, app.GetWebViewConfig().ExitCorners[0], "bottom-left")
 	scriptUpdated := app.getGestureScript()
-	testutil.ExpectedContains(t, scriptUpdated, `EXIT_CORNER = "bottom-left"`)
+	testutil.ExpectedContains(t, scriptUpdated, `EXIT_CORNERS = ["bottom-left"]`)
+
+	// Test updating multiple exit corners
+	err = app.SetWebViewExitCorners([]string{"top-left", "bottom-right"})
+	testutil.ExpectedNoError(t, err)
+	testutil.ExpectedLen(t, app.GetWebViewConfig().ExitCorners, 2)
+	testutil.ExpectedEqual(t, app.GetWebViewConfig().ExitCorners[0], "top-left")
+	testutil.ExpectedEqual(t, app.GetWebViewConfig().ExitCorners[1], "bottom-right")
+	scriptMulti := app.getGestureScript()
+	testutil.ExpectedContains(t, scriptMulti, `EXIT_CORNERS = ["top-left","bottom-right"]`)
 }
 
 

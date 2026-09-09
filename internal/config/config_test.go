@@ -337,19 +337,28 @@ func TestWebViewExitCorner(t *testing.T) {
 
 	// 1. Default should be top-right
 	testutil.ExpectedEqual(t, cm.GetWebViewExitCorner(), "top-right")
+	testutil.ExpectedLen(t, cm.GetWebViewExitCorners(), 1)
+	testutil.ExpectedEqual(t, cm.GetWebViewExitCorners()[0], "top-right")
 
-	// 2. Set valid corners
-	validCorners := []string{"top-left", "top-right", "bottom-left", "bottom-right", "TOP-LEFT", "  bottom-right  "}
-	for _, corner := range validCorners {
-		err := cm.SetWebViewExitCorner(corner)
-		testutil.ExpectedNoError(t, err)
-	}
-	testutil.ExpectedEqual(t, cm.GetWebViewExitCorner(), "bottom-right")
+	// 2. Set multiple valid corners
+	err := cm.SetWebViewExitCorners([]string{"top-left", "top-right", "bottom-right"})
+	testutil.ExpectedNoError(t, err)
+	corners := cm.GetWebViewExitCorners()
+	testutil.ExpectedEqual(t, len(corners), 3)
+	testutil.ExpectedTrue(t, corners[0] == "top-left" && corners[1] == "top-right" && corners[2] == "bottom-right")
 
-	// 3. Set invalid corner
-	err := cm.SetWebViewExitCorner("middle-center")
+	// 3. Set all 4 corners
+	err = cm.SetWebViewExitCorners([]string{"top-left", "top-right", "bottom-left", "bottom-right"})
+	testutil.ExpectedNoError(t, err)
+	testutil.ExpectedEqual(t, len(cm.GetWebViewExitCorners()), 4)
+
+	// 4. Set invalid corner
+	err = cm.SetWebViewExitCorners([]string{"middle-center"})
 	testutil.ExpectedError(t, err)
-	testutil.ExpectedEqual(t, cm.GetWebViewExitCorner(), "bottom-right")
+
+	// 5. Empty corners should fail
+	err = cm.SetWebViewExitCorners([]string{})
+	testutil.ExpectedError(t, err)
 }
 
 

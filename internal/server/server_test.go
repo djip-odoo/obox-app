@@ -314,6 +314,26 @@ func TestServer_AuthAndPrivilegedRoutes(t *testing.T) {
 	testutil.ExpectedEqual(t, respBearer.StatusCode, http.StatusOK)
 	testutil.ExpectedTrue(t, cfg.GetWebViewEnabled())
 
+	// 5b. Set exit corners with single corner array
+	reqCorner := httptest.NewRequest("POST", "/api/webview/corners", bytes.NewReader([]byte(`{"corners":["bottom-left"]}`)))
+	reqCorner.Header.Set("Content-Type", "application/json")
+	reqCorner.Header.Set("Authorization", "Bearer "+token)
+	respCorner, err := s.app.Test(reqCorner)
+	testutil.ExpectedNoError(t, err)
+	testutil.ExpectedEqual(t, respCorner.StatusCode, http.StatusOK)
+	testutil.ExpectedEqual(t, cfg.GetWebViewExitCorner(), "bottom-left")
+
+	// 5c. Set exit corners with array
+	reqCorners := httptest.NewRequest("POST", "/api/webview/corners", bytes.NewReader([]byte(`{"corners":["top-left","bottom-right"]}`)))
+	reqCorners.Header.Set("Content-Type", "application/json")
+	reqCorners.Header.Set("Authorization", "Bearer "+token)
+	respCorners, err := s.app.Test(reqCorners)
+	testutil.ExpectedNoError(t, err)
+	testutil.ExpectedEqual(t, respCorners.StatusCode, http.StatusOK)
+	testutil.ExpectedLen(t, cfg.GetWebViewExitCorners(), 2)
+	testutil.ExpectedEqual(t, cfg.GetWebViewExitCorners()[0], "top-left")
+	testutil.ExpectedEqual(t, cfg.GetWebViewExitCorners()[1], "bottom-right")
+
 	// 6. Reload kiosk callback with Bearer token
 	reloadCalled := false
 	s.SetKioskReloadCallback(func() {
