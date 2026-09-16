@@ -1,6 +1,7 @@
 import { useContext, useRef, useState } from "react";
 import { PrinterContext } from "../contexts/PrinterContext";
 import Dialog, { ActionType } from "./Dialog";
+import { WifiIcon } from "../functions/icon";
 
 const isValidOctet = (value: string) => {
   const number = Number(value);
@@ -66,13 +67,13 @@ export default function NetworkIpDialog() {
 
   const handlePaste = (event: React.ClipboardEvent) => {
     event.preventDefault();
-    
+
     const pasted = event.clipboardData.getData("text").trim();
     const ip = extractIP(pasted);
     const parts = ip?.split(".");
     if (!parts || !parts.every(isValidOctet)) {
-        setErrorMessage("The pasted address is not a valid IP address");
-        return;
+      setErrorMessage("The pasted address is not a valid IP address");
+      return;
     }
     setIpParts(parts);
     setErrorMessage(null);
@@ -81,10 +82,10 @@ export default function NetworkIpDialog() {
 
   const submit = async () => {
     if (!ipParts.every(isValidOctet)) {
-        setErrorMessage("Please enter a valid IP address");
-        return false;
+      setErrorMessage("Please enter a valid IP address");
+      return false;
     }
-  
+
     const ip = ipParts.join(".");
     const result = await printerContext.actions.addLanPrinter(ip);
     if (!result.status) {
@@ -106,8 +107,9 @@ export default function NetworkIpDialog() {
       actions={[{ name: "submit", label: "Submit", disabled: ipParts.some((part) => !part), onClick: submit, variant: "primary" as ActionType }]}
       onClose={cleanup}
       openButton={
-        <div className="w-full border-2 border-dashed border-gray-300 bg-gray-50 rounded-lg px-4 py-3 text-center text-gray-600 hover:border-gray-400 hover:bg-gray-100 cursor-pointer">
-          + Add Network Printer
+        <div className="flex-1 w-full border-2 border-dashed border-gray-300 bg-gray-50 rounded-lg text-center text-gray-600 hover:border-gray-400 hover:bg-gray-100 cursor-pointer flex items-center justify-center gap-2 transition-colors">
+          <WifiIcon className="w-4 h-4 shrink-0 text-gray-500" />
+          <span>Add Network Printer</span>
         </div>
       }
     >

@@ -1,0 +1,356 @@
+import { useContext, useEffect, useState } from "react";
+import { AppContext } from "../contexts/AppContext";
+import { OdooContext } from "../contexts/OdooContext";
+import { ToastContext } from "../contexts/ToastContext";
+import { errorText } from "../error";
+import {
+  AppIdIcon,
+  CheckIcon,
+  CloudStatusIcon,
+  CopyIcon,
+  DisconnectIcon,
+  HelpCircleIcon,
+  IpIcon,
+  LanStatusIcon,
+  LinkIcon,
+} from "../functions/icon";
+import { useClipboard } from "../hooks/useClipboard";
+import Dialog from "./Dialog";
+
+function DisconnectButton({
+  onClick,
+  className = "p-1 rounded-full text-gray-400 hover:text-rose-600 hover:bg-rose-100/80 transition-colors cursor-pointer shrink-0",
+}: {
+  onClick: (e?: React.MouseEvent) => void;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title="Disconnect from Odoo"
+      aria-label="Disconnect from Odoo"
+      className={className}
+    >
+      <DisconnectIcon className="w-4 h-4" />
+    </button>
+  );
+}
+
+interface CopyButtonProps {
+  label: string;
+  isCopied: boolean;
+  onCopy: () => void;
+}
+
+function CopyButton({ label, isCopied, onCopy }: CopyButtonProps) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onCopy();
+      }}
+      title={isCopied ? "Copied!" : `Copy ${label}`}
+      aria-label={`Copy ${label}`}
+      className={`shrink-0 p-1.5 rounded-lg transition-all duration-150 cursor-pointer flex items-center justify-center ${
+        isCopied
+          ? "text-emerald-600 bg-emerald-100/80 ring-1 ring-emerald-300"
+          : "text-gray-400 hover:text-odoo hover:bg-purple-50 active:scale-95"
+      }`}
+    >
+      {isCopied ? (
+        <CheckIcon className="w-3.5 h-3.5" />
+      ) : (
+        <CopyIcon className="w-3.5 h-3.5" />
+      )}
+    </button>
+  );
+}
+
+interface FieldCardProps {
+  label: string;
+  value: string;
+  title: string;
+  iconBg: string;
+  icon: React.ReactNode;
+  isCopied: boolean;
+  onCopy: () => void;
+}
+
+function FieldCard({
+  label,
+  value,
+  title,
+  iconBg,
+  icon,
+  isCopied,
+  onCopy,
+}: FieldCardProps) {
+  return (
+    <div
+      className="flex items-center justify-between gap-2 bg-gray-50 hover:bg-gray-100/70 border border-gray-200/80 rounded-xl px-3 py-2.5 transition-all shadow-2xs"
+      title={title}
+    >
+      <div className="flex items-center gap-2.5 min-w-0">
+        <div className={`w-7 h-7 rounded-lg ${iconBg} flex items-center justify-center shrink-0 border`}>
+          {icon}
+        </div>
+        <div className="min-w-0">
+          <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
+            {label}
+          </div>
+          <div className="font-mono text-xs text-gray-800 font-medium truncate">
+            {value || "—"}
+          </div>
+        </div>
+      </div>
+
+      <CopyButton label={label} isCopied={isCopied} onCopy={onCopy} />
+    </div>
+  );
+}
+
+interface StatusPillProps {
+  type: "lan" | "cloud";
+  status: string;
+}
+
+function StatusPill({ type, status }: StatusPillProps) {
+  const isConnected = status === "connected";
+  const isPending =
+    type === "cloud"
+      ? status === "connecting" || status === "polling"
+      : status === "connecting";
+
+  const colorClass = isConnected
+    ? "bg-emerald-50 text-emerald-700 border-emerald-200/70"
+    : isPending
+      ? "bg-amber-50 text-amber-700 border-amber-200/70"
+      : "bg-rose-50 text-rose-700 border-rose-200/70";
+
+  const labelText =
+    type === "lan"
+      ? `Local Network: ${status}`
+      : `Cloud Status: ${status}`;
+
+  const icon = type === "lan" ? (
+    <LanStatusIcon className={`w-4 h-4 ${isPending ? "animate-pulse" : ""}`} />
+  ) : (
+    <CloudStatusIcon className={`w-4 h-4 ${isPending ? "animate-pulse" : ""}`} />
+  );
+
+  return (
+    <div
+      className={`inline-flex items-center p-1.5 rounded-full border-2 ${colorClass}`}
+      title={labelText}
+    >
+      {icon}
+    </div>
+  );
+}
+
+function StatusPills({ lanStatus, wsStatus }: { lanStatus: string; wsStatus: string }) {
+  return (
+    <div className="flex items-center gap-1.5 shrink-0">
+      <StatusPill type="lan" status={lanStatus} />
+      <StatusPill type="cloud" status={wsStatus} />
+    </div>
+  );
+}
+
+export default function OdooStatus() {
+  const appContext = useContext(AppContext);
+  const odooContext = useContext(OdooContext);
+  const toastContext = useContext(ToastContext);
+  const { copy, isCopied } = useClipboard();
+
+  const { data: odooData } = odooContext;
+  const { data: appData } = appContext;
+
+  const isConnected = Boolean(odooData.status?.dbUrl);
+  const lanStatus = odooData.status?.lanStatus || "disconnected";
+  const wsStatus =
+    odooData.status?.websocketStatus ||
+    (isConnected ? "connected" : "disconnected");
+
+  const handleDisconnect = async (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    try {
+      const removed = await odooContext.actions.disconnectOdoo();
+      if (removed) {
+        toastContext.actions.showToast("Odoo connection removed", "success");
+      }
+    } catch (err) {
+      toastContext.actions.showToast(
+        `Failed to disconnect: ${errorText(err, "unknown error")}`,
+        "danger"
+      );
+    }
+  };
+
+  const fields: Omit<FieldCardProps, "isCopied" | "onCopy">[] = [
+    {
+      label: "IP Address",
+      value: appData.ipAddress,
+      title: "Network IP Address",
+      iconBg: "bg-blue-50 text-blue-600 border-blue-100/60",
+      icon: <IpIcon className="w-3.5 h-3.5" />,
+    },
+    {
+      label: "Obox App Serial Number",
+      value: appData.appId,
+      title: "App ID (Hardware Serial)",
+      iconBg: "bg-purple-50 text-odoo border-purple-100/60",
+      icon: <AppIdIcon className="w-3.5 h-3.5" />,
+    },
+  ];
+
+  const [closeSignal, setCloseSignal] = useState(0);
+
+  useEffect(() => {
+    if (isConnected) {
+      setCloseSignal((c) => c + 1);
+    }
+  }, [isConnected]);
+
+  const openButton = (
+    <div
+      role="button"
+      tabIndex={0}
+      title={
+        isConnected
+          ? "Odoo Connected (Click for details)"
+          : "Connect to Odoo (Click for instructions)"
+      }
+      className={`flex-1 h-full flex items-center justify-center gap-2 border-2 border-dashed rounded-lg px-2.5 py-3 cursor-pointer transition-colors ${
+        isConnected
+          ? "text-odoo border-odoo bg-gray-50 hover:border-odoo-dark hover:bg-gray-100"
+          : "text-gray-600 border-gray-300 bg-gray-50 hover:border-gray-400 hover:bg-gray-100"
+      }`}
+    >
+      {isConnected ? (
+        <>
+          <span className="truncate min-w-0 font-medium">Odoo Connected</span>
+          <StatusPills lanStatus={lanStatus} wsStatus={wsStatus} />
+          <DisconnectButton onClick={handleDisconnect} />
+        </>
+      ) : (
+        <>
+          <div
+            className="p-1 rounded-full text-gray-500 bg-gray-100 border border-gray-200 shrink-0"
+            title="Connect to Odoo"
+          >
+            <LinkIcon className="w-4 h-4" />
+          </div>
+          <span className="truncate min-w-0 font-medium">Connect Odoo</span>
+        </>
+      )}
+    </div>
+  );
+
+  return (
+    <Dialog
+      title="Obox Status"
+      openButton={openButton}
+      closeSignal={closeSignal}
+      maxWidth="max-w-md"
+      showTitleDivider
+    >
+      <div className="space-y-4">
+        {/* Connection Status Section */}
+        {isConnected && odooData.status?.dbUrl ? (
+          <div className="bg-purple-50/60 border border-purple-100 rounded-xl p-3 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5 text-sm font-medium text-emerald-700">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                Connected to Odoo
+              </div>
+              <div className="flex items-center gap-1.5">
+                <StatusPills lanStatus={lanStatus} wsStatus={wsStatus} />
+                <DisconnectButton
+                  onClick={handleDisconnect}
+                  className="inline-flex items-center p-1 rounded-lg text-rose-600 hover:text-rose-700 hover:bg-rose-50 transition-colors cursor-pointer"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between gap-2 bg-white/90 border border-purple-100 rounded-lg px-2.5 py-1.5 min-w-0">
+              <div className="flex items-center gap-2 min-w-0 flex-1">
+                <LinkIcon className="w-3.5 h-3.5 text-odoo shrink-0" />
+                <span className="font-mono text-xs text-gray-800 font-medium truncate">
+                  {odooData.status.dbUrl}
+                </span>
+              </div>
+              <CopyButton
+                label="Database URL"
+                isCopied={isCopied("Database URL")}
+                onCopy={() => copy(odooData.status?.dbUrl || "", "Database URL")}
+              />
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between bg-amber-50/70 border border-amber-200/80 rounded-xl px-3 py-2 text-xs text-amber-800">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-amber-500" />
+              <span className="font-medium">Not Connected to Odoo</span>
+            </div>
+            <StatusPills lanStatus={lanStatus} wsStatus={wsStatus} />
+          </div>
+        )}
+
+        {/* Credentials Cards (App ID & Local IP) */}
+        <div>
+          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+            Device Identifiers
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-1 gap-2">
+            {fields.map((field) => (
+              <FieldCard
+                key={field.label}
+                {...field}
+                isCopied={isCopied(field.label)}
+                onCopy={() => copy(field.value, field.label)}
+              />
+            ))}
+          </div>
+        </div>
+
+        {/* Instructions to Connect Odoo and Obox App */}
+        <div className="border-t border-gray-100 pt-3">
+          <div className="text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+            <HelpCircleIcon className="w-4 h-4 text-odoo" />
+            How to Connect with Odoo
+          </div>
+
+          <div className="space-y-2.5 text-xs text-gray-600">
+            <div className="bg-gray-50 rounded-xl p-3 border border-gray-100 space-y-2">
+              <div className="font-medium text-gray-800">
+                Connect via Odoo Obox App
+              </div>
+              <ol className="list-decimal list-inside space-y-1.5 text-gray-600 pl-0.5">
+                <li>
+                  Open your Odoo instance and navigate to the{" "}
+                  <strong className="text-gray-800">Obox</strong>.
+                </li>
+                <li>
+                  Click the <strong className="text-gray-800">Connect</strong>{" "}
+                  button
+                </li>
+                <li>
+                  Paste your{" "}
+                  <strong className="text-gray-800">Ip Address</strong> and{" "}
+                  <strong className="text-gray-800">Obox App Serial Number</strong>
+                </li>
+                <li>
+                  Click <strong className="text-gray-800">Connect</strong>.
+                  Obox App will link automatically.
+                </li>
+              </ol>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Dialog>
+  );
+}
