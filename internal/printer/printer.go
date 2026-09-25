@@ -14,11 +14,12 @@ import (
 )
 
 // ConnKind is the transport a Printer talks over.
-type ConnKind int
+type ConnKind string
 
 const (
-	ConnKindUSB ConnKind = iota
-	ConnKindLAN
+	ConnKindUSB ConnKind = "usb"
+	ConnKindLAN ConnKind = "lan"
+	ConnKindBT  ConnKind = "bluetooth"
 )
 
 const (
@@ -60,9 +61,18 @@ type Printer struct {
 	// LAN fields
 	tcpConn net.Conn
 	jobs    chan Job
+
+	// Bluetooth fields
+	bluetoothAddress string
+	btConn           net.Conn
 }
 
 func newPrinter(id string) *Printer {
+	// Check if this is a Bluetooth printer
+	if address, ok := decodeBluetoothPrinterID(id); ok {
+		return newBlueToothPrinter(address)
+	}
+
 	// Check if this is a LAN printer
 	if lanIP, ok := DecodeLANPrinterID(id); ok {
 		p := &Printer{
@@ -112,6 +122,10 @@ func (p *Printer) Write(data []byte) error {
 
 	logger.Debugf("Writing %d bytes to printer %s", len(data), p.idToString())
 
+	if p.connectionType == ConnKindBT {
+		return p.writeBluetooth(data)
+	}
+
 	if p.connectionType == ConnKindLAN {
 		if err := p.tcpConn.SetWriteDeadline(time.Now().Add(WriteTimeout)); err != nil {
 			p.closeDeviceLocked()
@@ -158,7 +172,10 @@ func (p *Printer) loop() {
 	}
 }
 func (p *Printer) ensureOpen() error {
-	if p.connectionType == ConnKindLAN {
+	switch p.connectionType {
+	case ConnKindBT:
+		return p.ensureOpenBluetoothLocked()
+	case ConnKindLAN:
 		return p.ensureOpenLANLocked()
 	}
 	return p.ensureOpenUSBLocked()
@@ -301,7 +318,15 @@ func (p *Printer) close() {
 }
 
 func (p *Printer) closeDeviceLocked() {
-	if p.connectionType == ConnKindLAN {
+	switch p.connectionType {
+	case ConnKindBT:
+		if p.btConn != nil {
+			_ = p.btConn.Close()
+			p.btConn = nil
+			logger.Debugf("BT printer %s connection closed", p.idToString())
+		}
+		return
+	case ConnKindLAN:
 		if p.tcpConn != nil {
 			_ = p.tcpConn.Close()
 			p.tcpConn = nil
@@ -327,7 +352,10 @@ func (p *Printer) closeDeviceLocked() {
 }
 
 func (p *Printer) idToString() string {
-	if p.connectionType == ConnKindLAN {
+	switch p.connectionType {
+	case ConnKindBT:
+		return fmt.Sprintf("BT:%s", p.bluetoothAddress)
+	case ConnKindLAN:
 		return fmt.Sprintf("LAN:%s", p.lanIP)
 	}
 	if p.id != nil {

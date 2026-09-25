@@ -1,18 +1,27 @@
 package printer
 
 import (
-	"epos-proxy/internal/logger"
 	"fmt"
 	"sync"
+
+	"epos-proxy/internal/config"
+	"epos-proxy/internal/logger"
 )
 
 type Manager struct {
 	mu       sync.Mutex
+	cfg      *config.Manager
 	printers map[string]*Printer
 }
 
-func NewManager() *Manager {
-	return &Manager{printers: make(map[string]*Printer)}
+type RawPrinter struct {
+	ConnectionType ConnKind `json:"connectionType"`
+	Address        string   `json:"address"`
+	Name           string   `json:"name,omitempty"`
+}
+
+func NewManager(cfg *config.Manager) *Manager {
+	return &Manager{cfg: cfg, printers: make(map[string]*Printer)}
 }
 
 func (m *Manager) Get(id string) (*Printer, error) {
@@ -22,6 +31,12 @@ func (m *Manager) Get(id string) (*Printer, error) {
 	if p, ok := m.printers[id]; ok {
 		logger.Debugf("Reusing existing printer instance for ID: %s", id)
 		return p, nil
+	}
+
+	if address, ok := decodeBluetoothPrinterID(id); ok {
+		if !m.isBluetoothPrinterConfigured(address) {
+			return nil, fmt.Errorf("bluetooth printer %q is not configured", address)
+		}
 	}
 
 	logger.Debugf("Creating new printer instance for ID: %s", id)

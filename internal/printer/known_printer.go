@@ -27,7 +27,6 @@ var printerRegistry = map[string]Type{
 	"04b8:0e27": TypeReceipt, // Epson TM-T83III
 	"2d84:c7c8": TypeReceipt, // Zhuhai Poskey
 	"4b43:3830": TypeReceipt, // Caysn
-	"0483:5720": TypeReceipt, // STMicroelectronics
 
 	// Label printers
 	"0a5f:0187": TypeLabel, // Zebra ZD421

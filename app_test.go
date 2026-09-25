@@ -58,7 +58,7 @@ func TestApp_AppVariableAndPrintersAndGetPrinterUrl(t *testing.T) {
 	testutil.ExpectedNoError(t, err)
 
 	port := testutil.GetFreePort(t)
-	mgr := printer.NewManager()
+	mgr := printer.NewManager(cfg)
 	srv := server.New(port, mgr)
 	defer srv.Stop()
 
@@ -77,7 +77,7 @@ func TestApp_AppVariableAndPrintersAndGetPrinterUrl(t *testing.T) {
 	printers := app.Printers()
 	foundLAN := false
 	for _, p := range printers.Printers {
-		if p.IsLAN && p.LANIp == "192.168.1.100" {
+		if p.ConnectionType == printer.ConnKindLAN && p.LANIp == "192.168.1.100" {
 			foundLAN = true
 			testutil.ExpectedEqual(t, p.Type, string(printer.TypeReceipt))
 			testutil.ExpectedEqual(t, p.Name, "Network - 192.168.1.100")
@@ -296,7 +296,7 @@ func TestApp_NetworkPrintingEnabled(t *testing.T) {
 	testutil.ExpectedNoError(t, err)
 
 	port := testutil.GetFreePort(t)
-	mgr := printer.NewManager()
+	mgr := printer.NewManager(nil)
 	srv := server.New(port, mgr)
 	defer srv.Stop()
 
@@ -326,4 +326,70 @@ func TestApp_GetTroubleshootInfo(t *testing.T) {
 	testutil.ExpectedTrue(t, info.Port > 0)
 	testutil.ExpectedNotEqual(t, info.Subnet, "")
 	testutil.ExpectedNotEqual(t, info.LocalIP, "")
+}
+
+func TestApp_AddBluetoothPrinter_Validation(t *testing.T) {
+	tempDir := t.TempDir()
+	t.Setenv("HOME", tempDir)
+
+	cfg, err := config.NewManager()
+	testutil.ExpectedNoError(t, err)
+
+	app := &App{config: cfg}
+
+	// 1. Invalid MAC address
+	err = app.AddBluetoothPrinter("invalid-mac", "My Printer")
+	testutil.ExpectedError(t, err)
+
+	// 2. Empty address
+	err = app.AddBluetoothPrinter("", "My Printer")
+	testutil.ExpectedError(t, err)
+}
+
+func TestApp_ConfirmRemoveBluetoothPrinter(t *testing.T) {
+	const mac = "AA:BB:CC:DD:EE:FF"
+
+	tests := []struct {
+		name          string
+		dialogResult  string
+		dialogErr     error
+		expectRemoved bool
+		expectErr     bool
+	}{
+		{name: "confirm removes bluetooth printer", dialogResult: "Confirm", expectRemoved: true},
+		{name: "linux yes button removes bluetooth printer", dialogResult: "Yes", expectRemoved: true},
+		{name: "cancel keeps bluetooth printer", dialogResult: "Cancel"},
+		{name: "dialog error keeps bluetooth printer", dialogErr: errors.New("no display"), expectErr: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+
+			cfg, err := config.NewManager()
+			testutil.ExpectedNoError(t, err)
+			testutil.ExpectedNoError(t, cfg.AddBluetoothPrinter(mac, "Test BT Printer"))
+
+			dialogs := &fakeDialogs{messageResult: tc.dialogResult, messageErr: tc.dialogErr}
+			app := &App{config: cfg, dialogs: dialogs}
+
+			removed, err := app.ConfirmRemoveBluetoothPrinter(mac)
+
+			if tc.expectErr {
+				testutil.ExpectedError(t, err)
+			} else {
+				testutil.ExpectedNoError(t, err)
+			}
+			testutil.ExpectedEqual(t, removed, tc.expectRemoved)
+
+			expectedRemaining := 1
+			if tc.expectRemoved {
+				expectedRemaining = 0
+			}
+			testutil.ExpectedLen(t, cfg.GetBluetoothPrinters(), expectedRemaining)
+
+			testutil.ExpectedLen(t, dialogs.messages, 1)
+			testutil.ExpectedContains(t, dialogs.messages[0].Message, mac)
+		})
+	}
 }

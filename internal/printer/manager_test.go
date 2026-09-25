@@ -12,7 +12,7 @@ import (
 )
 
 func TestNewManager(t *testing.T) {
-	mgr := NewManager()
+	mgr := NewManager(nil)
 	testutil.ExpectedNotNil(t, mgr)
 	testutil.ExpectedNotNil(t, mgr.printers)
 }
@@ -61,7 +61,7 @@ func TestManager_LANPrinterIntegration(t *testing.T) {
 	})
 	testutil.ExpectedNoError(t, err)
 
-	mgr := NewManager()
+	mgr := NewManager(nil)
 	printerID := EncodeLANPrinterID("127.0.0.1")
 
 	testPayload := []byte("TEST PRINT DATA FOR LAN")
@@ -73,7 +73,7 @@ func TestManager_LANPrinterIntegration(t *testing.T) {
 		testutil.ExpectedTrue(t, res.OK)
 		testutil.ExpectedNoError(t, res.Err)
 	case <-time.After(5 * time.Second):
-		t.Fatal("Timed out waiting for print job reply")
+		testutil.ExpectedTrue(t, false, "Timed out waiting for print job reply")
 	}
 
 	select {
@@ -82,12 +82,12 @@ func TestManager_LANPrinterIntegration(t *testing.T) {
 		testutil.ExpectedBytesEqual(t, receivedData, testPayload)
 		mu.Unlock()
 	case <-time.After(3 * time.Second):
-		t.Fatal("Timed out waiting for mock printer server to receive data")
+		testutil.ExpectedTrue(t, false, "Timed out waiting for mock printer server to receive data")
 	}
 }
 
 func TestManager_Get_Error_And_Reusing(t *testing.T) {
-	mgr := NewManager()
+	mgr := NewManager(nil)
 
 	// 1. Unreachable LAN printer returns error
 	_, err := mgr.Get(EncodeLANPrinterID("127.0.0.254"))
@@ -109,7 +109,7 @@ func TestManager_Get_Error_And_Reusing(t *testing.T) {
 }
 
 func TestManager_WriteAsync_PrinterNotFound(t *testing.T) {
-	mgr := NewManager()
+	mgr := NewManager(nil)
 
 	// Non-existent USB printer
 	nonExistentID := "czpOT05fRVhJU1RFTlRfU0VSSUFMCg"
