@@ -175,10 +175,6 @@ export default function UpdateBanner() {
           </p>
         </div>
       )}
-
-      <div className="fixed bottom-2 left-1/2 -translate-x-1/2 text-xs text-gray-500 hover:text-odoo underline-offset-2 transition-colors">
-        {!!info?.currentVersion && info.currentVersion} {checking && "Checking for updates…"}
-      </div>
     </>
   );
 }

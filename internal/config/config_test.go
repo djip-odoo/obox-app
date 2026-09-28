@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	"epos-proxy/internal/testutil"
 )
@@ -275,4 +276,57 @@ func TestFindAvailablePort_RangeExhausted(t *testing.T) {
 	testutil.ExpectedError(t, err)
 	testutil.ExpectedTrue(t, errors.Is(err, ErrNoAvailablePort))
 	testutil.ExpectedEqual(t, port, 0)
+}
+
+func TestManager_DebugMode(t *testing.T) {
+	tempDir := t.TempDir()
+	configFile := filepath.Join(tempDir, "config.json")
+
+	cm := &Manager{
+		path: configFile,
+		Data: defaults(),
+	}
+
+	testutil.ExpectedFalse(t, cm.IsDebugMode())
+	testutil.ExpectedNil(t, cm.DebugModeExpiresAt())
+
+	err := cm.SetDebugMode(true)
+	testutil.ExpectedNoError(t, err)
+	testutil.ExpectedTrue(t, cm.IsDebugMode())
+
+	exp := cm.DebugModeExpiresAt()
+	testutil.ExpectedNotNil(t, exp)
+	testutil.ExpectedTrue(t, exp.After(time.Now()), "Expiration should be in the future")
+	testutil.ExpectedTrue(t, exp.Before(time.Now().Add(25*time.Hour)), "Expiration should be around 24 hours")
+
+	// Verify persistence by reloading from disk
+	cmReloaded := &Manager{
+		path: configFile,
+		Data: defaults(),
+	}
+	err = cmReloaded.Load()
+	testutil.ExpectedNoError(t, err)
+	testutil.ExpectedTrue(t, cmReloaded.IsDebugMode())
+	testutil.ExpectedNotNil(t, cmReloaded.DebugModeExpiresAt())
+
+	// Test expiration in the past -> auto-disable
+	past := time.Now().Add(-1 * time.Hour)
+	cmReloaded.Data.DebugModeExpiresAt = &past
+	testutil.ExpectedFalse(t, cmReloaded.IsDebugMode())
+	testutil.ExpectedNil(t, cmReloaded.DebugModeExpiresAt())
+
+	// Reload from disk to verify auto-disabled state was persisted
+	cmExpiredReloaded := &Manager{
+		path: configFile,
+		Data: defaults(),
+	}
+	err = cmExpiredReloaded.Load()
+	testutil.ExpectedNoError(t, err)
+	testutil.ExpectedFalse(t, cmExpiredReloaded.IsDebugMode())
+
+	// Test disabling manually
+	err = cm.SetDebugMode(false)
+	testutil.ExpectedNoError(t, err)
+	testutil.ExpectedFalse(t, cm.IsDebugMode())
+	testutil.ExpectedNil(t, cm.DebugModeExpiresAt())
 }

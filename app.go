@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"sync"
 	"time"
 
+	"epos-proxy/buildinfo"
 	"epos-proxy/internal/config"
 	"epos-proxy/internal/logger"
 	"epos-proxy/internal/printer"
@@ -48,6 +50,8 @@ type App struct {
 	dialogs             dialoger
 	updatePath          string
 	restartingForUpdate bool
+	debugTimer          *time.Timer
+	debugMu             sync.Mutex
 }
 
 // dlg returns the dialog backend, defaulting to the Wails runtime so an App
@@ -90,6 +94,9 @@ type UnavailablePrinter struct {
 type AppVariable struct {
 	ServerRunning bool   `json:"serverRunning"`
 	Os            string `json:"os"`
+	Version       string `json:"version"`
+	BuildTime     string `json:"buildTime"`
+	Commit        string `json:"commit"`
 }
 
 type Printers struct {
@@ -229,6 +236,11 @@ func NewApp() *App {
 
 	a.config = cfg
 
+	if a.config.IsDebugMode() {
+		logger.SetSupportMode(true)
+		a.scheduleDebugModeExpiry()
+	}
+
 	return a
 }
 
@@ -246,6 +258,13 @@ func (a *App) startup(ctx context.Context) {
 }
 
 func (a *App) shutdown(ctx context.Context) {
+	a.debugMu.Lock()
+	if a.debugTimer != nil {
+		a.debugTimer.Stop()
+		a.debugTimer = nil
+	}
+	a.debugMu.Unlock()
+
 	logger.Infof("Stopping proxy server")
 
 	if err := a.webserver.Stop(); err != nil {
@@ -257,6 +276,9 @@ func (a *App) AppVariable() AppVariable {
 	return AppVariable{
 		Os:            runtime.GOOS,
 		ServerRunning: a.webserver.Running(),
+		Version:       buildinfo.Version,
+		BuildTime:     buildinfo.BuildTime,
+		Commit:        buildinfo.Commit,
 	}
 }
 
@@ -445,6 +467,58 @@ func (a *App) IsNetworkPrintingEnabled() bool {
 		return false
 	}
 	return a.config.IsNetworkPrintingEnabled()
+}
+
+func (a *App) SetSupportModeEnabled(enabled bool) error {
+	a.debugMu.Lock()
+	if a.debugTimer != nil {
+		a.debugTimer.Stop()
+		a.debugTimer = nil
+	}
+	a.debugMu.Unlock()
+
+	logger.SetSupportMode(enabled)
+	if a.config != nil {
+		if err := a.config.SetDebugMode(enabled); err != nil {
+			return err
+		}
+		if enabled {
+			a.scheduleDebugModeExpiry()
+		}
+	}
+	return nil
+}
+
+func (a *App) scheduleDebugModeExpiry() {
+	if a.config == nil {
+		return
+	}
+	expiresAt := a.config.DebugModeExpiresAt()
+	if expiresAt == nil {
+		return
+	}
+	remaining := time.Until(*expiresAt)
+	if remaining <= 0 {
+		_ = a.SetSupportModeEnabled(false)
+		return
+	}
+
+	a.debugMu.Lock()
+	if a.debugTimer != nil {
+		a.debugTimer.Stop()
+	}
+	a.debugTimer = time.AfterFunc(remaining, func() {
+		logger.Infof("Support mode expired after 24 hours; auto-disabling")
+		_ = a.SetSupportModeEnabled(false)
+	})
+	a.debugMu.Unlock()
+}
+
+func (a *App) IsSupportModeEnabled() bool {
+	if a.config == nil {
+		return logger.IsSupportMode()
+	}
+	return a.config.IsDebugMode()
 }
 
 type TroubleshootInfo struct {

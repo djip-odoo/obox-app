@@ -66,3 +66,17 @@ func TestLoggingWrappers(t *testing.T) {
 	testutil.ExpectedContains(t, buf.String(), "debugf arg")
 	buf.Reset()
 }
+
+func TestSupportMode(t *testing.T) {
+	SetSupportMode(false)
+	testutil.ExpectedFalse(t, IsSupportMode())
+	testutil.ExpectedEqual(t, log.GetLevel(), logrus.InfoLevel)
+
+	SetSupportMode(true)
+	testutil.ExpectedTrue(t, IsSupportMode())
+	testutil.ExpectedEqual(t, log.GetLevel(), logrus.DebugLevel)
+
+	SetSupportMode(false)
+	testutil.ExpectedFalse(t, IsSupportMode())
+	testutil.ExpectedEqual(t, log.GetLevel(), logrus.InfoLevel)
+}

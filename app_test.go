@@ -7,7 +7,9 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
+	"epos-proxy/buildinfo"
 	"epos-proxy/internal/config"
 	"epos-proxy/internal/logger"
 	"epos-proxy/internal/printer"
@@ -72,6 +74,9 @@ func TestApp_AppVariableAndPrintersAndGetPrinterUrl(t *testing.T) {
 	testutil.ExpectedEqual(t, app.GetPrinterUrl("czpTTjEyMzQ1Ng"), fmt.Sprintf("%s:%d/p/czpTTjEyMzQ1Ng", util.GetLocalIP(app.IsNetworkPrintingEnabled()), port))
 	testutil.ExpectedTrue(t, appVariable.ServerRunning, "Expected ServerRunning to be true")
 	testutil.ExpectedTrue(t, appVariable.Os != "", "Expected non-empty Os field in app variable")
+	testutil.ExpectedEqual(t, appVariable.Version, buildinfo.Version)
+	testutil.ExpectedEqual(t, appVariable.BuildTime, buildinfo.BuildTime)
+	testutil.ExpectedEqual(t, appVariable.Commit, buildinfo.Commit)
 
 	// Verify Printers() includes the configured LAN printer
 	printers := app.Printers()
@@ -326,4 +331,42 @@ func TestApp_GetTroubleshootInfo(t *testing.T) {
 	testutil.ExpectedTrue(t, info.Port > 0)
 	testutil.ExpectedNotEqual(t, info.Subnet, "")
 	testutil.ExpectedNotEqual(t, info.LocalIP, "")
+}
+
+func TestApp_SupportModeEnabled(t *testing.T) {
+	tempDir := t.TempDir()
+	t.Setenv("HOME", tempDir)
+
+	cfg, err := config.NewManager()
+	testutil.ExpectedNoError(t, err)
+
+	app := &App{config: cfg}
+
+	// Default state
+	testutil.ExpectedFalse(t, app.IsSupportModeEnabled())
+	testutil.ExpectedFalse(t, logger.IsSupportMode())
+
+	// Enable support mode
+	err = app.SetSupportModeEnabled(true)
+	testutil.ExpectedNoError(t, err)
+	testutil.ExpectedTrue(t, app.IsSupportModeEnabled())
+	testutil.ExpectedTrue(t, logger.IsSupportMode())
+	testutil.ExpectedTrue(t, cfg.IsDebugMode())
+	testutil.ExpectedNotNil(t, app.debugTimer)
+
+	// Disable support mode
+	err = app.SetSupportModeEnabled(false)
+	testutil.ExpectedNoError(t, err)
+	testutil.ExpectedFalse(t, app.IsSupportModeEnabled())
+	testutil.ExpectedFalse(t, logger.IsSupportMode())
+	testutil.ExpectedFalse(t, cfg.IsDebugMode())
+	testutil.ExpectedNil(t, app.debugTimer)
+
+	// Test auto-expiration via timer
+	past := time.Now().Add(-1 * time.Second)
+	cfg.Data.DebugMode = true
+	cfg.Data.DebugModeExpiresAt = &past
+	app.scheduleDebugModeExpiry()
+	testutil.ExpectedFalse(t, app.IsSupportModeEnabled())
+	testutil.ExpectedFalse(t, logger.IsSupportMode())
 }

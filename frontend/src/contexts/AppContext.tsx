@@ -13,6 +13,9 @@ type AppContextType = {
     isMac: boolean;
     isLinux: boolean;
     serverIsRunning: boolean;
+    version: string;
+    buildTime: string;
+    commit: string;
   };
   actions: {};
 };
@@ -27,6 +30,9 @@ export const AppContextWrapper = ({ children }: AppContextWrapper) => {
   const [app, setApp] = useState<main.AppVariable | null>(null);
 
   const os = app?.os || null;
+  const version = app?.version || "";
+  const buildTime = app?.buildTime || "";
+  const commit = app?.commit || "";
   const data = {
     app,
     os,
@@ -34,6 +40,9 @@ export const AppContextWrapper = ({ children }: AppContextWrapper) => {
     isMac: os === "darwin",
     isLinux: os === "linux",
     serverIsRunning: app?.serverRunning ?? false,
+    version,
+    buildTime,
+    commit,
   };
   const setters = {};
   const actions = {};

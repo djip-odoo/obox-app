@@ -63,7 +63,7 @@ EOF
 
 # ── Build ─────────────────────────────────────────────────────────────────────
 echo "▶ Building..."
-wails build -clean
+wails build -clean -ldflags "-X epos-proxy/buildinfo.Version=${VERSION} -X epos-proxy/buildinfo.BuildTime=${BUILD_TIME} -X epos-proxy/buildinfo.Commit=${COMMIT}"
 
 # ── Bundle libusb ─────────────────────────────────────────────────────────────
 echo "▶ Bundling libusb..."
