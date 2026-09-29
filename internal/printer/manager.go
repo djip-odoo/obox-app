@@ -1,8 +1,8 @@
 package printer
 
 import (
-	"epos-proxy/internal/logger"
 	"fmt"
+	"obox-app/internal/logger"
 	"sync"
 )
 

@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"sync/atomic"
 
-	"epos-proxy/internal/escpos"
-	"epos-proxy/internal/logger"
-	"epos-proxy/internal/printer"
+	"obox-app/internal/escpos"
+	"obox-app/internal/logger"
+	"obox-app/internal/printer"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/cors"

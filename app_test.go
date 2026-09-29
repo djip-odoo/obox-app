@@ -8,12 +8,12 @@ import (
 	"path/filepath"
 	"testing"
 
-	"epos-proxy/internal/config"
-	"epos-proxy/internal/logger"
-	"epos-proxy/internal/printer"
-	"epos-proxy/internal/server"
-	"epos-proxy/internal/testutil"
-	"epos-proxy/internal/util"
+	"obox-app/internal/config"
+	"obox-app/internal/logger"
+	"obox-app/internal/printer"
+	"obox-app/internal/server"
+	"obox-app/internal/testutil"
+	"obox-app/internal/util"
 
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -228,7 +228,7 @@ func TestApp_DownloadLogs(t *testing.T) {
 		testutil.ExpectedTrue(t, info.Size() > 0, "expected a non-empty archive")
 
 		testutil.ExpectedLen(t, dialogs.saves, 1)
-		testutil.ExpectedContains(t, dialogs.saves[0].DefaultFilename, "epos-proxy-logs-")
+		testutil.ExpectedContains(t, dialogs.saves[0].DefaultFilename, "obox-app-logs-")
 		testutil.ExpectedLen(t, dialogs.messages, 0)
 	})
 

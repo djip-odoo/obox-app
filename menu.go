@@ -3,7 +3,7 @@ package main
 import (
 	"runtime"
 
-	"epos-proxy/internal/logger"
+	"obox-app/internal/logger"
 
 	"github.com/wailsapp/wails/v2/pkg/menu"
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
