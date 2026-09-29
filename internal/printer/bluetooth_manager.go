@@ -62,7 +62,7 @@ func (m *Manager) AddBluetoothPrinter(p RawPrinter) error {
 		return err
 	}
 
-	if err := m.cfg.AddBluetoothPrinter(norm, p.Name); err != nil {
+	if err := m.cfg.AddBluetoothPrinter(norm, p.Name, string(p.Protocol), p.BottomPadding); err != nil {
 		logger.Errorf("Failed to save Bluetooth printer: %v", err)
 		return fmt.Errorf("failed to save Bluetooth printer: %w", err)
 	}
@@ -99,4 +99,22 @@ func (m *Manager) isBluetoothPrinterConfigured(address string) bool {
 		}
 	}
 	return false
+}
+
+func (m *Manager) getBluetoothPrinterConfig(printerId string) (Protocol, int) {
+	address, ok := decodeBluetoothPrinterID(printerId)
+	if !ok {
+		return ProtocolESCPOS, 0
+	}
+
+	for _, p := range m.cfg.GetBluetoothPrinters() {
+		if p.Address == address {
+			proto := ParseProtocol(p.Protocol)
+			if p.BottomPadding < 0 {
+				return proto, 0
+			}
+			return proto, p.BottomPadding
+		}
+	}
+	return ProtocolESCPOS, 0
 }

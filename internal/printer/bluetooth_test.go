@@ -38,16 +38,16 @@ func TestAddAndRemoveBluetoothPrinter(t *testing.T) {
 	mgr := NewManager(cfg)
 
 	// 1. Invalid address validation error
-	err = mgr.AddBluetoothPrinter("not-valid-address", "Test Printer")
+	err = mgr.AddBluetoothPrinter(RawPrinter{Address: "not-valid-address", Name: "Test Printer", Protocol: ProtocolESCPOS})
 	testutil.ExpectedError(t, err)
 
 	// 2. Empty address
-	err = mgr.AddBluetoothPrinter("", "Test Printer")
+	err = mgr.AddBluetoothPrinter(RawPrinter{Address: "", Name: "Test Printer", Protocol: ProtocolESCPOS})
 	testutil.ExpectedError(t, err)
 
 	// 3. Remove printer
 	const mac = "AA:BB:CC:DD:EE:FF"
-	err = cfg.AddBluetoothPrinter(mac, "Test Printer")
+	err = cfg.AddBluetoothPrinter(mac, "Test Printer", "ESCPOS", 0)
 	testutil.ExpectedNoError(t, err)
 	testutil.ExpectedLen(t, cfg.GetBluetoothPrinters(), 1)
 
@@ -64,8 +64,8 @@ func TestListBluetoothPrinters_NilConfig(t *testing.T) {
 }
 
 func TestIsBluetoothPrinterConfigured(t *testing.T) {
-	mgrNil := NewManager(nil)
-	testutil.ExpectedFalse(t, mgrNil.isBluetoothPrinterConfigured("11:22:33:44:55:66"))
+	mgrEmpty := NewManager(&config.Manager{})
+	testutil.ExpectedFalse(t, mgrEmpty.isBluetoothPrinterConfigured("11:22:33:44:55:66"))
 
 	cfg := &config.Manager{
 		Data: config.AppConfig{
@@ -82,4 +82,24 @@ func TestIsBluetoothPrinterConfigured(t *testing.T) {
 	unconfiguredID := encodeBluetoothPrinterID("AA:BB:CC:DD:EE:FF")
 	_, err := mgr.Get(unconfiguredID)
 	testutil.ExpectedError(t, err)
+}
+
+func TestGetBluetoothPrinterConfig_ProtocolAndPadding(t *testing.T) {
+	cfg := &config.Manager{
+		Data: config.AppConfig{
+			BluetoothPrinters: []config.BluetoothPrinterConfig{
+				{Address: "11:22:33:44:55:66", Protocol: string(ProtocolESCPOS)},
+				{Address: "22:33:44:55:66:77", Protocol: string(ProtocolESCPOSPartial)},
+			},
+		},
+	}
+	mgr := NewManager(cfg)
+
+	protoStandard, padStandard := mgr.getBluetoothPrinterConfig(encodeBluetoothPrinterID("11:22:33:44:55:66"))
+	testutil.ExpectedEqual(t, protoStandard, ProtocolESCPOS)
+	testutil.ExpectedEqual(t, padStandard, DefaultPrinterBottomPadding)
+
+	protoPartial, padPartial := mgr.getBluetoothPrinterConfig(encodeBluetoothPrinterID("22:33:44:55:66:77"))
+	testutil.ExpectedEqual(t, protoPartial, ProtocolESCPOSPartial)
+	testutil.ExpectedEqual(t, padPartial, 0)
 }

@@ -21,15 +21,15 @@ func TestManager_BluetoothPrinters(t *testing.T) {
 	testutil.ExpectedLen(t, initialList, 0)
 
 	// Add printer 1
-	err := cm.AddBluetoothPrinter("AA:BB:CC:DD:EE:01", "BT Printer 1")
+	err := cm.AddBluetoothPrinter("AA:BB:CC:DD:EE:01", "BT Printer 1", "ESCPOS", 0)
 	testutil.ExpectedNoError(t, err)
 
 	// Add printer 2
-	err = cm.AddBluetoothPrinter("AA:BB:CC:DD:EE:02", "BT Printer 2")
+	err = cm.AddBluetoothPrinter("AA:BB:CC:DD:EE:02", "BT Printer 2", "ESCPOS", 0)
 	testutil.ExpectedNoError(t, err)
 
 	// Update printer 1 name (same address)
-	err = cm.AddBluetoothPrinter("AA:BB:CC:DD:EE:01", "Renamed Printer 1")
+	err = cm.AddBluetoothPrinter("AA:BB:CC:DD:EE:01", "Renamed Printer 1", "ESCPOS", 0)
 	testutil.ExpectedNoError(t, err)
 
 	printers := cm.GetBluetoothPrinters()
@@ -71,7 +71,7 @@ func TestManager_BluetoothPrinters_Concurrent(t *testing.T) {
 		go func(id int) {
 			defer wg.Done()
 			addr := "AA:BB:CC:DD:EE:0" + string(rune('0'+id))
-			_ = cm.AddBluetoothPrinter(addr, "BT Printer")
+			_ = cm.AddBluetoothPrinter(addr, "BT Printer", "ESCPOS", 0)
 			_ = cm.GetBluetoothPrinters()
 			_ = cm.RemoveBluetoothPrinter(addr)
 			_ = cm.GetBluetoothPrinters()

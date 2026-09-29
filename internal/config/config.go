@@ -21,8 +21,10 @@ const (
 )
 
 type BluetoothPrinterConfig struct {
-	Address string `json:"address"`
-	Name    string `json:"name"`
+	Address       string `json:"address"`
+	Name          string `json:"name"`
+	Protocol      string `json:"type,omitempty"`
+	BottomPadding int    `json:"bottom_padding,omitempty"`
 }
 
 type AppConfig struct {

@@ -68,7 +68,7 @@ func TestLANPrinterID_Roundtrip(t *testing.T) {
 	ip := "192.168.1.150"
 	encoded := EncodeLANPrinterID(ip)
 
-	decoded, ok := DecodeLANPrinterID(encoded)
+	decoded, ok := decodeLANPrinterID(encoded)
 	testutil.ExpectedTrue(t, ok)
 	testutil.ExpectedEqual(t, decoded, ip)
 }
@@ -87,7 +87,7 @@ func TestDecodeLANPrinterID_Invalid(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			_, ok := DecodeLANPrinterID(tc.input)
+			_, ok := decodeLANPrinterID(tc.input)
 			testutil.ExpectedFalse(t, ok)
 		})
 	}

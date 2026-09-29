@@ -26,6 +26,8 @@ export type AddPrinterParams = {
   connectionType: "lan" | "bluetooth";
   address: string;
   name?: string;
+  protocol?: string;
+  bottomPadding?: number;
 };
 
 export type UIPrinter = main.Printer & {
@@ -136,6 +138,8 @@ export const PrinterContextWrapper = ({ children }: { children: ReactNode }) => 
         connectionType: params.connectionType,
         address: params.address,
         name: params.name ?? params.address,
+        protocol: params.protocol ?? "ESCPOS",
+        bottomPadding: params.bottomPadding ?? 0,
       });
       await checkAppStatus(true);
       return { status: true, message: `Successfully added printer ${params.name || params.address}` };

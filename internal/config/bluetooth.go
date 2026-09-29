@@ -1,18 +1,22 @@
 package config
 
-func (cm *Manager) AddBluetoothPrinter(address, name string) error {
+func (cm *Manager) AddBluetoothPrinter(address, name string, protocol string, bottomPadding int) error {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
 	for i, existing := range cm.Data.BluetoothPrinters {
 		if existing.Address == address {
 			cm.Data.BluetoothPrinters[i].Name = name
+			cm.Data.BluetoothPrinters[i].Protocol = protocol
+			cm.Data.BluetoothPrinters[i].BottomPadding = bottomPadding
 			return cm.saveLocked()
 		}
 	}
 	cm.Data.BluetoothPrinters = append(cm.Data.BluetoothPrinters, BluetoothPrinterConfig{
-		Address: address,
-		Name:    name,
+		Address:       address,
+		Name:          name,
+		Protocol:      protocol,
+		BottomPadding: bottomPadding,
 	})
 	return cm.saveLocked()
 }

@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"epos-proxy/internal/config"
 	"epos-proxy/internal/printer"
 	"epos-proxy/internal/testutil"
 
@@ -41,7 +42,14 @@ func TestPrintData_ValidXML_Success(t *testing.T) {
 	testutil.ExpectedNoError(t, err)
 
 	port := testutil.GetFreePort(t)
-	mgr := printer.NewManager(nil)
+	cfg := &config.Manager{
+		Data: config.AppConfig{
+			LANPrinters: []string{
+				"127.0.0.1",
+			},
+		},
+	}
+	mgr := printer.NewManager(cfg)
 	s := New(port, mgr)
 	defer s.Stop()
 
@@ -115,7 +123,14 @@ func TestPrintLabel_Success(t *testing.T) {
 	testutil.ExpectedNoError(t, err)
 
 	port := testutil.GetFreePort(t)
-	mgr := printer.NewManager(nil)
+	cfg := &config.Manager{
+		Data: config.AppConfig{
+			LANPrinters: []string{
+				"127.0.0.1",
+			},
+		},
+	}
+	mgr := printer.NewManager(cfg)
 	s := New(port, mgr)
 	defer s.Stop()
 

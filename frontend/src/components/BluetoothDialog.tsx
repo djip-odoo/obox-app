@@ -21,6 +21,8 @@ export default function BluetoothDialog() {
 
   const [macInput, setMacInput] = useState("");
   const [nameInput, setNameInput] = useState("");
+  const [isEscpos, setIsEscpos] = useState(true);
+  const [bottomPadding, setBottomPadding] = useState(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
   const [isScanning, setIsScanning] = useState(false);
@@ -82,6 +84,8 @@ export default function BluetoothDialog() {
   const cleanup = () => {
     setMacInput("");
     setNameInput("");
+    setIsEscpos(true);
+    setBottomPadding(0);
     setErrorMessage(null);
     setScanError(null);
     setDevices([]);
@@ -96,11 +100,18 @@ export default function BluetoothDialog() {
       return false;
     }
 
+    if (!isEscpos && (isNaN(bottomPadding) || bottomPadding < 0 || bottomPadding > 500)) {
+      setErrorMessage("Bottom padding must be between 0 and 500");
+      return false;
+    }
+
     const name = nameInput.trim() || mac;
     const result = await printerContext.actions.addPrinter({
       connectionType: "bluetooth",
       address: mac,
       name,
+      protocol: isEscpos ? "ESCPOS" : "ESCPOS_PARTIAL",
+      bottomPadding: !isEscpos ? bottomPadding : 0,
     });
 
     if (!result.status) {
@@ -272,6 +283,45 @@ export default function BluetoothDialog() {
             placeholder="e.g. Bluetooth Receipt Printer"
             className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-odoo focus:border-transparent"
           />
+        </div>
+
+        <div className="pt-1">
+          <label className="flex items-center justify-between cursor-pointer">
+            <span className="text-xs font-medium text-gray-700">ESCPOS</span>
+            <div className="relative inline-flex items-center">
+              <input
+                type="checkbox"
+                checked={isEscpos}
+                onChange={(e) => setIsEscpos(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-odoo"></div>
+            </div>
+          </label>
+
+          {!isEscpos && (
+            <div className="mt-3">
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                Bottom Padding (px)
+              </label>
+              <input
+                type="number"
+                min={0}
+                max={500}
+                value={bottomPadding}
+                onChange={(e) => {
+                  const val = e.target.value === "" ? 0 : Number(e.target.value);
+                  setBottomPadding(val);
+                  setErrorMessage(null);
+                }}
+                placeholder="0"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-odoo focus:border-transparent"
+              />
+              <span className="text-[11px] text-gray-500 mt-1 block">
+                Extra space added at the end of partial receipt (0 - 500 px)
+              </span>
+            </div>
+          )}
         </div>
       </div>
 

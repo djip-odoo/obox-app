@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"epos-proxy/internal/escpos"
 	"epos-proxy/internal/logger"
 
 	"github.com/google/gousb"
@@ -65,6 +66,9 @@ type Printer struct {
 	// Bluetooth fields
 	bluetoothAddress string
 	btConn           net.Conn
+
+	protocol      Protocol
+	bottomPadding int
 }
 
 func newPrinter(id string) *Printer {
@@ -74,7 +78,7 @@ func newPrinter(id string) *Printer {
 	}
 
 	// Check if this is a LAN printer
-	if lanIP, ok := DecodeLANPrinterID(id); ok {
+	if lanIP, ok := decodeLANPrinterID(id); ok {
 		p := &Printer{
 			connectionType: ConnKindLAN,
 			lanIP:          lanIP,
@@ -362,4 +366,27 @@ func (p *Printer) idToString() string {
 		return fmt.Sprintf("USB:%s, %v", p.id.Serial, p.id)
 	}
 	return "USB:unknown"
+}
+
+func (p *Printer) ConvertBody(body []byte) ([]byte, error) {
+	if p.protocol == ProtocolESCPOSPartial {
+		return escpos.ParseXMLToRasterImage(body, p.bottomPadding)
+	}
+	return escpos.ParseXML(body)
+}
+
+func (p *Printer) WriteAsync(data []byte) (<-chan JobResult, error) {
+	reply := make(chan JobResult, 1)
+	err := p.Enqueue(func(p *Printer) JobResult {
+		logger.Debugf("Executing print job for printer %s", p.idToString())
+		if err := p.Write(data); err != nil {
+			return JobResult{Err: fmt.Errorf("print job failed for printer %s: %w", p.idToString(), err)}
+		}
+		logger.Debugf("Print job completed for printer %s", p.idToString())
+		return JobResult{OK: true}
+	}, reply)
+	if err != nil {
+		return nil, fmt.Errorf("failed to enqueue print job for printer %s: %w", p.idToString(), err)
+	}
+	return reply, nil
 }
