@@ -181,6 +181,7 @@ func (a *App) ApplyUpdate() error {
 
 	logger.Infof("Applying update %s", a.updatePath)
 	if err := update.Apply(a.updatePath); err != nil {
+		logger.Errorf("Failed to apply update %s: %v", a.updatePath, err)
 		return err
 	}
 	a.updatePath = ""
