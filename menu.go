@@ -26,6 +26,15 @@ func createMenu(app *App) *menu.Menu {
 		handleNetworkPrintingToggle(app, cb)
 	})
 
+	appMenu.AddText("Check for Updates", nil, func(_ *menu.CallbackData) {
+		logger.Infof("Check for updates requested from menu")
+		wailsruntime.EventsEmit(app.ctx, "check-for-update-requested")
+	})
+
+	appMenu.AddCheckbox("Debug Mode", app.IsDebugModeEnabled(), nil, func(cb *menu.CallbackData) {
+		handleDebugModeToggle(app, cb)
+	})
+
 	appMenu.AddText("Download Logs", nil, func(_ *menu.CallbackData) {
 		app.DownloadLogs()
 	})
@@ -36,6 +45,14 @@ func createMenu(app *App) *menu.Menu {
 	})
 
 	return mainMenu
+}
+
+func handleDebugModeToggle(app *App, cb *menu.CallbackData) {
+	checked := cb.MenuItem.Checked
+	logger.Debugf("Debug Mode toggled: %v", checked)
+	if err := app.SetDebugModeEnabled(checked); err != nil {
+		logger.Errorf("Failed to persist debug mode: %v", err)
+	}
 }
 
 func handleAutoStartToggle(app *App, cb *menu.CallbackData) {
@@ -76,9 +93,15 @@ func handleNetworkPrintingToggle(app *App, cb *menu.CallbackData) {
 }
 
 func (app *App) ConfirmQuit() bool {
+	// During a self-update the app is replacing its own binary; quit without
+	// asking so the updater script or installer can finish the swap.
+	if app.restartingForUpdate {
+		return true
+	}
+
 	result, err := app.dlg().Message(app.ctx, wailsruntime.MessageDialogOptions{
 		Type:          wailsruntime.QuestionDialog,
-		Title:         "Quit ePOS Proxy",
+		Title:         "Quit Obox App",
 		Message:       "Stopping the proxy will prevent POS from printing receipts.\n\nAre you sure you want to quit?",
 		Buttons:       []string{"Cancel", "Quit"},
 		DefaultButton: "Cancel",

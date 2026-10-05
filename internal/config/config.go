@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 )
 
 var ErrNoAvailablePort = errors.New("no available port in range")
@@ -18,18 +19,25 @@ const AppName = "OboxApp"
 const (
 	PortRangeStart = 4545
 	PortRangeEnd   = 4555
+
+	DebugModeDuration = 24 * time.Hour
 )
 
 type AppConfig struct {
-	Port            int      `json:"port"`
-	LANPrinters     []string `json:"lan_printers,omitempty"`
-	NetworkPrinting bool     `json:"network_printing"`
+	Port               int        `json:"port"`
+	LANPrinters        []string   `json:"lan_printers,omitempty"`
+	NetworkPrinting    bool       `json:"network_printing"`
+	LastSeenUpdate     string     `json:"last_seen_update,omitempty"`
+	DebugMode          bool       `json:"debug_mode"`
+	DebugModeExpiresAt *time.Time `json:"debug_mode_expires_at,omitempty"`
 }
 
 func defaults() AppConfig {
 	return AppConfig{
-		Port:            0,
-		NetworkPrinting: false,
+		Port:               0,
+		NetworkPrinting:    false,
+		DebugMode:          false,
+		DebugModeExpiresAt: nil,
 	}
 }
 
@@ -151,6 +159,51 @@ func (cm *Manager) IsNetworkPrintingEnabled() bool {
 	return cm.Data.NetworkPrinting
 }
 
+func (cm *Manager) SetDebugMode(enabled bool) error {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+	cm.Data.DebugMode = enabled
+	if enabled {
+		exp := time.Now().Add(DebugModeDuration)
+		cm.Data.DebugModeExpiresAt = &exp
+	} else {
+		cm.Data.DebugModeExpiresAt = nil
+	}
+	return cm.saveLocked()
+}
+
+func (cm *Manager) IsDebugMode() bool {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
+	if cm.Data.DebugMode {
+		if cm.Data.DebugModeExpiresAt == nil {
+			exp := time.Now().Add(DebugModeDuration)
+			cm.Data.DebugModeExpiresAt = &exp
+			_ = cm.saveLocked()
+			return true
+		}
+		if time.Now().After(*cm.Data.DebugModeExpiresAt) {
+			cm.Data.DebugMode = false
+			cm.Data.DebugModeExpiresAt = nil
+			_ = cm.saveLocked()
+			return false
+		}
+		return true
+	}
+	return false
+}
+
+func (cm *Manager) DebugModeExpiresAt() *time.Time {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	if !cm.Data.DebugMode || cm.Data.DebugModeExpiresAt == nil {
+		return nil
+	}
+	exp := *cm.Data.DebugModeExpiresAt
+	return &exp
+}
+
 func (cm *Manager) AddLanEposPrinter(ip string) error {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
@@ -188,4 +241,25 @@ func (cm *Manager) GetLANPrinters() []string {
 	result := make([]string, len(cm.Data.LANPrinters))
 	copy(result, cm.Data.LANPrinters)
 	return result
+}
+
+// LastSeenUpdate returns the release tag whose update banner has already been
+// offered, so the banner is not shown twice for the same release.
+func (cm *Manager) LastSeenUpdate() string {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	return cm.Data.LastSeenUpdate
+}
+
+// SetLastSeenUpdate records the release tag the user saw, so the update banner
+// is suppressed until a newer release appears.
+func (cm *Manager) SetLastSeenUpdate(tag string) error {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
+	if tag == "" || cm.Data.LastSeenUpdate == tag {
+		return nil
+	}
+	cm.Data.LastSeenUpdate = tag
+	return cm.saveLocked()
 }

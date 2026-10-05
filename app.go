@@ -2,15 +2,19 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"runtime"
+	"sync"
 	"time"
 
+	"obox-app/buildinfo"
 	"obox-app/internal/config"
 	"obox-app/internal/logger"
 	"obox-app/internal/printer"
 	"obox-app/internal/server"
+	"obox-app/internal/update"
 	"obox-app/internal/util"
 
 	autostart "github.com/emersion/go-autostart"
@@ -38,12 +42,16 @@ func (runtimeDialogs) SaveFile(ctx context.Context, opts wailsruntime.SaveDialog
 
 // App struct
 type App struct {
-	ctx            context.Context
-	webserver      *server.Server
-	config         *config.Manager
-	printerManager *printer.Manager
-	autoStart      *autostart.App
-	dialogs        dialoger
+	ctx                 context.Context
+	webserver           *server.Server
+	config              *config.Manager
+	printerManager      *printer.Manager
+	autoStart           *autostart.App
+	dialogs             dialoger
+	updatePath          string
+	restartingForUpdate bool
+	debugTimer          *time.Timer
+	debugMu             sync.Mutex
 }
 
 // dlg returns the dialog backend, defaulting to the Wails runtime so an App
@@ -86,12 +94,129 @@ type UnavailablePrinter struct {
 type AppVariable struct {
 	ServerRunning bool   `json:"serverRunning"`
 	Os            string `json:"os"`
+	Version       string `json:"version"`
+	BuildTime     string `json:"buildTime"`
+	Commit        string `json:"commit"`
 }
 
 type Printers struct {
 	ErrorMsg            string               `json:"errorMsg"`
 	Printers            []Printer            `json:"printers"`
 	UnavailablePrinters []UnavailablePrinter `json:"unavailablePrinters"`
+}
+
+// UpdateInfo summarises the outcome of a release check for the frontend.
+type UpdateInfo struct {
+	CheckOK        bool   `json:"checkOk"`
+	Available      bool   `json:"available"`
+	CurrentVersion string `json:"currentVersion"`
+	LatestVersion  string `json:"latestVersion"`
+	DownloadURL    string `json:"downloadUrl"`
+	AssetName      string `json:"assetName"`
+	AssetSize      int64  `json:"assetSize"`
+	Notes          string `json:"notes"`
+	Error          string `json:"error,omitempty"`
+}
+
+var currentVersion = update.Version
+
+// CheckForUpdate asks GitHub whether a newer build exists for this OS. It
+// never fails: network errors come back inside the result so the UI can show
+// them inline.
+func (a *App) CheckForUpdate() UpdateInfo {
+	logger.Debugf("Checking for updates (current version %s)", currentVersion)
+	info := update.Check()
+	ui := UpdateInfo{
+		CheckOK:        info.CheckOK,
+		Available:      info.Available,
+		CurrentVersion: currentVersion,
+		LatestVersion:  info.LatestVersion,
+		DownloadURL:    info.DownloadURL,
+		AssetName:      info.AssetName,
+		AssetSize:      info.AssetSize,
+		Notes:          info.Notes,
+		Error:          info.Error,
+	}
+	if info.Available {
+		logger.Infof("Update available: %s -> %s", currentVersion, info.LatestVersion)
+	}
+	return ui
+}
+
+// DownloadUpdate downloads the latest release asset and returns the local
+// path. Progress is emitted to the frontend as the "update-progress" event.
+func (a *App) DownloadUpdate() (string, error) {
+	info := a.CheckForUpdate()
+	if !info.CheckOK || !info.Available {
+		return "", errors.New("no update available for this operating system")
+	}
+
+	dir, err := os.MkdirTemp("", "obox-app-update")
+	if err != nil {
+		return "", fmt.Errorf("failed to create update directory: %w", err)
+	}
+
+	path, err := update.Download(info.DownloadURL, info.AssetName, dir, func(downloaded, total int64) {
+		if a.ctx != nil {
+			wailsruntime.EventsEmit(a.ctx, "update-progress", map[string]int64{
+				"downloaded": downloaded,
+				"total":      total,
+			})
+		}
+	})
+	if err != nil {
+		return "", err
+	}
+
+	a.updatePath = path
+	return path, nil
+}
+
+// ApplyUpdate installs the previously downloaded asset, then quits so the new
+// version (or the running installer) can take over.
+func (a *App) ApplyUpdate() error {
+	if a.updatePath == "" {
+		return errors.New("no downloaded update to apply")
+	}
+
+	logger.Infof("Applying update %s", a.updatePath)
+	if err := update.Apply(a.updatePath); err != nil {
+		logger.Errorf("Failed to apply update %s: %v", a.updatePath, err)
+		return err
+	}
+	a.updatePath = ""
+	a.restartingForUpdate = true
+
+	if a.ctx != nil {
+		wailsruntime.Quit(a.ctx)
+	}
+	go func() {
+		time.Sleep(1 * time.Second)
+		os.Exit(0)
+	}()
+	return nil
+}
+
+// LastSeenUpdate exposes the release tag whose banner was already shown, so the
+// frontend can decide whether to offer the banner again.
+func (a *App) LastSeenUpdate() string {
+	if a.config == nil {
+		return ""
+	}
+	return a.config.LastSeenUpdate()
+}
+
+// MarkUpdateSeen persists the release tag shown to the user. The banner for
+// that version is then suppressed until a newer release appears.
+func (a *App) MarkUpdateSeen(tag string) error {
+	if a.config == nil {
+		return nil
+	}
+	if err := a.config.SetLastSeenUpdate(tag); err != nil {
+		logger.Warnf("Failed to persist seen update %q: %v", tag, err)
+		return err
+	}
+	return nil
 }
 
 func NewApp() *App {
@@ -116,6 +241,11 @@ func NewApp() *App {
 
 	a.config = cfg
 
+	if a.config.IsDebugMode() {
+		logger.SetDebugMode(true)
+		a.scheduleDebugModeExpiry()
+	}
+
 	return a
 }
 
@@ -133,7 +263,14 @@ func (a *App) startup(ctx context.Context) {
 }
 
 func (a *App) shutdown(ctx context.Context) {
-	logger.Infof("Stopping Obox App server")
+	a.debugMu.Lock()
+	if a.debugTimer != nil {
+		a.debugTimer.Stop()
+		a.debugTimer = nil
+	}
+	a.debugMu.Unlock()
+
+	logger.Infof("Stopping proxy server")
 
 	if err := a.webserver.Stop(); err != nil {
 		logger.Errorf("Server stop error: %v", err)
@@ -144,6 +281,9 @@ func (a *App) AppVariable() AppVariable {
 	return AppVariable{
 		Os:            runtime.GOOS,
 		ServerRunning: a.webserver.Running(),
+		Version:       buildinfo.Version,
+		BuildTime:     buildinfo.BuildTime,
+		Commit:        buildinfo.Commit,
 	}
 }
 
@@ -332,6 +472,60 @@ func (a *App) IsNetworkPrintingEnabled() bool {
 		return false
 	}
 	return a.config.IsNetworkPrintingEnabled()
+}
+
+func (a *App) SetDebugModeEnabled(enabled bool) error {
+	a.debugMu.Lock()
+	if a.debugTimer != nil {
+		a.debugTimer.Stop()
+		a.debugTimer = nil
+	}
+	a.debugMu.Unlock()
+
+	logger.SetDebugMode(enabled)
+	if a.config != nil {
+		if err := a.config.SetDebugMode(enabled); err != nil {
+			return err
+		}
+		if enabled {
+			a.scheduleDebugModeExpiry()
+		}
+	}
+	return nil
+}
+
+// SetSupportModeEnabled is an alias for SetDebugModeEnabled.
+func (a *App) SetSupportModeEnabled(enabled bool) error {
+	return a.SetDebugModeEnabled(enabled)
+}
+
+func (a *App) scheduleDebugModeExpiry() {
+	if a.config == nil {
+		return
+	}
+	expiresAt := a.config.DebugModeExpiresAt()
+	if expiresAt == nil {
+		return
+	}
+	remaining := time.Until(*expiresAt)
+	if remaining <= 0 {
+		_ = a.SetDebugModeEnabled(false)
+		return
+	}
+
+	a.debugMu.Lock()
+	if a.debugTimer != nil {
+		a.debugTimer.Stop()
+	}
+	a.debugTimer = time.AfterFunc(remaining, func() {
+		logger.Infof("Debug mode expired after 24 hours; auto-disabling")
+		_ = a.SetDebugModeEnabled(false)
+	})
+	a.debugMu.Unlock()
+}
+
+func (a *App) IsDebugModeEnabled() bool {
+	return a.config.IsDebugMode()
 }
 
 type TroubleshootInfo struct {
