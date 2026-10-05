@@ -30,7 +30,7 @@ var assets embed.FS
 
 func main() {
 	logger.InitLogger()
-	logger.Debugf("Starting ePOS Proxy")
+	logger.Debugf("Starting Obox App")
 
 	app := NewApp()
 
@@ -44,7 +44,7 @@ func main() {
 	}
 
 	err := wails.Run(&options.App{
-		Title:                    "ePOS Proxy",
+		Title:                    "Obox App",
 		Width:                    800,
 		Height:                   600,
 		MinWidth:                 700,

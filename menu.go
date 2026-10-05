@@ -102,7 +102,7 @@ func (app *App) ConfirmQuit() bool {
 	result, err := app.dlg().Message(app.ctx, wailsruntime.MessageDialogOptions{
 		Type:          wailsruntime.QuestionDialog,
 		Title:         "Quit Obox App",
-		Message:       "Stopping the proxy will prevent POS from printing receipts.\n\nAre you sure you want to quit?",
+		Message:       "Stopping the Obox App will prevent POS from printing receipts.\n\nAre you sure you want to quit?",
 		Buttons:       []string{"Cancel", "Quit"},
 		DefaultButton: "Cancel",
 	})

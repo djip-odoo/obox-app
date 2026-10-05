@@ -15,6 +15,7 @@ import (
 	"obox-app/internal/printer"
 	"obox-app/internal/server"
 	"obox-app/internal/testutil"
+	"obox-app/internal/update"
 	"obox-app/internal/util"
 
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
@@ -375,4 +376,27 @@ func TestApp_DebugModeEnabled(t *testing.T) {
 	app.scheduleDebugModeExpiry()
 	testutil.ExpectedFalse(t, app.IsDebugModeEnabled())
 	testutil.ExpectedFalse(t, logger.IsDebugMode())
+}
+
+func TestApp_UpdateMethods(t *testing.T) {
+	tempDir := t.TempDir()
+	t.Setenv("HOME", tempDir)
+
+	cfg, err := config.NewManager()
+	testutil.ExpectedNoError(t, err)
+
+	app := &App{config: cfg}
+
+	// Status before any check
+	status := app.GetUpdateStatus()
+	testutil.ExpectedEqual(t, string(status.State), string(update.StateIdle))
+
+	// Test DismissUpdate and LastSeenUpdate
+	testutil.ExpectedEqual(t, app.LastSeenUpdate(), "")
+	testutil.ExpectedNoError(t, app.DismissUpdate("v1.2.3"))
+	testutil.ExpectedEqual(t, app.LastSeenUpdate(), "v1.2.3")
+
+	// MarkUpdateSeen alias
+	testutil.ExpectedNoError(t, app.MarkUpdateSeen("v1.3.0"))
+	testutil.ExpectedEqual(t, app.LastSeenUpdate(), "v1.3.0")
 }

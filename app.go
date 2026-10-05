@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"runtime"
@@ -48,7 +47,7 @@ type App struct {
 	printerManager      *printer.Manager
 	autoStart           *autostart.App
 	dialogs             dialoger
-	updatePath          string
+	updater             *update.Updater
 	restartingForUpdate bool
 	debugTimer          *time.Timer
 	debugMu             sync.Mutex
@@ -106,86 +105,66 @@ type Printers struct {
 }
 
 // UpdateInfo summarises the outcome of a release check for the frontend.
-type UpdateInfo struct {
-	CheckOK        bool   `json:"checkOk"`
-	Available      bool   `json:"available"`
-	CurrentVersion string `json:"currentVersion"`
-	LatestVersion  string `json:"latestVersion"`
-	DownloadURL    string `json:"downloadUrl"`
-	AssetName      string `json:"assetName"`
-	AssetSize      int64  `json:"assetSize"`
-	Notes          string `json:"notes"`
-	Error          string `json:"error,omitempty"`
+type UpdateInfo = update.Info
+
+func (a *App) getUpdater() *update.Updater {
+	if a.updater == nil {
+		currentVer := buildinfo.Version
+		if currentVer == "" || currentVer == "local" {
+			currentVer = update.Version
+		}
+		a.updater = update.NewUpdater(update.Config{
+			RepoOwner:      update.RepoOwner,
+			RepoName:       update.RepoName,
+			CurrentVersion: currentVer,
+			TargetOS:       runtime.GOOS,
+			TargetArch:     runtime.GOARCH,
+		})
+	}
+	if a.config != nil && a.config.LastSeenUpdate() != "" {
+		a.updater.Dismiss(a.config.LastSeenUpdate())
+	}
+	return a.updater
 }
 
-var currentVersion = update.Version
-
-// CheckForUpdate asks GitHub whether a newer build exists for this OS. It
-// never fails: network errors come back inside the result so the UI can show
-// them inline.
+// CheckForUpdate asks GitHub whether a newer build exists for this OS.
 func (a *App) CheckForUpdate() UpdateInfo {
-	logger.Debugf("Checking for updates (current version %s)", currentVersion)
-	info := update.Check()
-	ui := UpdateInfo{
-		CheckOK:        info.CheckOK,
-		Available:      info.Available,
-		CurrentVersion: currentVersion,
-		LatestVersion:  info.LatestVersion,
-		DownloadURL:    info.DownloadURL,
-		AssetName:      info.AssetName,
-		AssetSize:      info.AssetSize,
-		Notes:          info.Notes,
-		Error:          info.Error,
-	}
-	if info.Available {
-		logger.Infof("Update available: %s -> %s", currentVersion, info.LatestVersion)
-	}
-	return ui
+	u := a.getUpdater()
+	info, _ := u.Check(context.Background(), true)
+	return info
 }
 
 // DownloadUpdate downloads the latest release asset and returns the local
 // path. Progress is emitted to the frontend as the "update-progress" event.
 func (a *App) DownloadUpdate() (string, error) {
-	info := a.CheckForUpdate()
-	if !info.CheckOK || !info.Available {
-		return "", errors.New("no update available for this operating system")
-	}
-
-	dir, err := os.MkdirTemp("", "obox-app-update")
-	if err != nil {
-		return "", fmt.Errorf("failed to create update directory: %w", err)
-	}
-
-	path, err := update.Download(info.DownloadURL, info.AssetName, dir, func(downloaded, total int64) {
+	u := a.getUpdater()
+	return u.Download(context.Background(), func(downloaded, total int64, percent int) {
 		if a.ctx != nil {
-			wailsruntime.EventsEmit(a.ctx, "update-progress", map[string]int64{
+			wailsruntime.EventsEmit(a.ctx, "update-progress", map[string]interface{}{
 				"downloaded": downloaded,
 				"total":      total,
+				"percent":    percent,
 			})
 		}
 	})
-	if err != nil {
-		return "", err
-	}
-
-	a.updatePath = path
-	return path, nil
 }
 
 // ApplyUpdate installs the previously downloaded asset, then quits so the new
 // version (or the running installer) can take over.
 func (a *App) ApplyUpdate() error {
-	if a.updatePath == "" {
-		return errors.New("no downloaded update to apply")
+	u := a.getUpdater()
+	a.restartingForUpdate = true
+
+	// Stop background services and release locks before applying
+	if a.webserver != nil && a.webserver.Running() {
+		_ = a.webserver.Stop()
 	}
 
-	logger.Infof("Applying update %s", a.updatePath)
-	if err := update.Apply(a.updatePath); err != nil {
-		logger.Errorf("Failed to apply update %s: %v", a.updatePath, err)
+	if err := u.Apply(); err != nil {
+		a.restartingForUpdate = false
+		logger.Errorf("Failed to apply update: %v", err)
 		return err
 	}
-	a.updatePath = ""
-	a.restartingForUpdate = true
 
 	if a.ctx != nil {
 		wailsruntime.Quit(a.ctx)
@@ -197,8 +176,16 @@ func (a *App) ApplyUpdate() error {
 	return nil
 }
 
-// LastSeenUpdate exposes the release tag whose banner was already shown, so the
-// frontend can decide whether to offer the banner again.
+// DismissUpdate records that the user dismissed this update tag.
+func (a *App) DismissUpdate(tag string) error {
+	a.getUpdater().Dismiss(tag)
+	if a.config != nil {
+		return a.config.SetLastSeenUpdate(tag)
+	}
+	return nil
+}
+
+// LastSeenUpdate exposes the release tag whose banner was already shown/dismissed.
 func (a *App) LastSeenUpdate() string {
 	if a.config == nil {
 		return ""
@@ -206,17 +193,14 @@ func (a *App) LastSeenUpdate() string {
 	return a.config.LastSeenUpdate()
 }
 
-// MarkUpdateSeen persists the release tag shown to the user. The banner for
-// that version is then suppressed until a newer release appears.
+// MarkUpdateSeen persists the release tag shown to the user.
 func (a *App) MarkUpdateSeen(tag string) error {
-	if a.config == nil {
-		return nil
-	}
-	if err := a.config.SetLastSeenUpdate(tag); err != nil {
-		logger.Warnf("Failed to persist seen update %q: %v", tag, err)
-		return err
-	}
-	return nil
+	return a.DismissUpdate(tag)
+}
+
+// GetUpdateStatus returns the current status of the updater.
+func (a *App) GetUpdateStatus() UpdateInfo {
+	return a.getUpdater().Status()
 }
 
 func NewApp() *App {
@@ -260,6 +244,16 @@ func (a *App) startup(ctx context.Context) {
 	}
 
 	a.webserver = server.New(port, a.printerManager)
+
+	// Non-blocking automatic update check in the background after startup
+	go func() {
+		time.Sleep(2 * time.Second)
+		u := a.getUpdater()
+		info, err := u.Check(context.Background(), false)
+		if err == nil && info.Available && a.ctx != nil {
+			wailsruntime.EventsEmit(a.ctx, "update-available", info)
+		}
+	}()
 }
 
 func (a *App) shutdown(ctx context.Context) {
@@ -270,7 +264,7 @@ func (a *App) shutdown(ctx context.Context) {
 	}
 	a.debugMu.Unlock()
 
-	logger.Infof("Stopping proxy server")
+	logger.Infof("Stopping Obox App server")
 
 	if err := a.webserver.Stop(); err != nil {
 		logger.Errorf("Server stop error: %v", err)

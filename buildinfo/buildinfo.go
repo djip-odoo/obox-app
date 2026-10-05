@@ -7,7 +7,5 @@ var (
 )
 
 func GetVersionInfo() string {
-	return "Version: " + Version + "\n" +
-		"Build Time: " + BuildTime + "\n" +
-		"Commit: " + Commit
+	return "Version: " + Version + "\n" + "Build Time: " + BuildTime + "\n" + "Commit: " + Commit
 }
