@@ -45,14 +45,14 @@ func (runtimeDialogs) SaveFile(ctx context.Context, opts wailsruntime.SaveDialog
 
 // App struct
 type App struct {
-	ctx            context.Context
-	webserver      *server.Server
-	config         *config.Manager
-	printerManager *printer.Manager
-	autoStart      *autostart.App
-	dialogs        dialoger
-	appMenu        *menu.Menu // stored so kiosk mode can hide/restore the menu bar
-	sessionToken   string     // trusted Wails-origin token set once in startup()
+	ctx               context.Context
+	webserver         *server.Server
+	config            *config.Manager
+	printerManager    *printer.Manager
+	autoStart         *autostart.App
+	dialogs           dialoger
+	appMenu           *menu.Menu // stored so kiosk mode can hide/restore the menu bar
+	sessionToken      string     // trusted Wails-origin token set once in startup()
 	pinAuthMu         sync.RWMutex
 	pendingPinAuth    bool
 	inManagement      bool
@@ -110,6 +110,7 @@ type WebViewConfig struct {
 	Enabled     bool     `json:"enabled"`
 	HasPIN      bool     `json:"hasPIN"`
 	ExitCorners []string `json:"exitCorners"`
+	Fullscreen  bool     `json:"fullscreen"`
 }
 
 type Printers struct {
@@ -337,7 +338,23 @@ func (a *App) GetWebViewConfig() WebViewConfig {
 		Enabled:     a.config.GetWebViewEnabled(),
 		HasPIN:      a.config.HasWebViewPIN(),
 		ExitCorners: a.config.GetWebViewExitCorners(),
+		Fullscreen:  a.config.GetWebViewFullscreen(),
 	}
+}
+
+// SetWebViewFullscreen persists the fullscreen kiosk setting and updates window state if active.
+func (a *App) SetWebViewFullscreen(fullscreen bool) error {
+	logger.Debugf("Setting WebView fullscreen: %v", fullscreen)
+	if err := a.config.SetWebViewFullscreen(fullscreen); err != nil {
+		return err
+	}
+	if a.IsRenderingWebApp() {
+		a.SetWindowFullscreen(fullscreen)
+	}
+	if a.ctx != nil {
+		wailsruntime.EventsEmit(a.ctx, "webview-config-changed")
+	}
+	return nil
 }
 
 // SetWebViewExitCorners persists the configured corners for the 4-tap exit gesture.
@@ -477,7 +494,11 @@ func (a *App) NavigateToWebApp() {
 		return
 	}
 
-	a.SetWindowFullscreen(true)
+	if a.config.GetWebViewFullscreen() {
+		a.SetWindowFullscreen(true)
+	} else {
+		a.SetWindowFullscreen(false)
+	}
 
 	if a.ctx != nil {
 		logger.Infof("Navigating top-level WebView to configured URL: %s", targetURL)

@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -246,6 +247,10 @@ func TestServer_APIRoutes_ReadOnly(t *testing.T) {
 	respWebView, err := s.app.Test(reqWebView)
 	testutil.ExpectedNoError(t, err)
 	testutil.ExpectedEqual(t, respWebView.StatusCode, http.StatusOK)
+	var wvData map[string]interface{}
+	err = json.NewDecoder(respWebView.Body).Decode(&wvData)
+	testutil.ExpectedNoError(t, err)
+	testutil.ExpectedEqual(t, wvData["fullscreen"], true)
 
 	// 4. GET /api/troubleshoot
 	reqTrouble := httptest.NewRequest("GET", "/api/troubleshoot", nil)
@@ -334,6 +339,26 @@ func TestServer_AuthAndPrivilegedRoutes(t *testing.T) {
 	testutil.ExpectedEqual(t, cfg.GetWebViewExitCorners()[0], "top-left")
 	testutil.ExpectedEqual(t, cfg.GetWebViewExitCorners()[1], "bottom-right")
 
+	// 5d. Set fullscreen with Bearer token
+	testutil.ExpectedTrue(t, cfg.GetWebViewFullscreen())
+	reqFullscreen := httptest.NewRequest("POST", "/api/webview/fullscreen", bytes.NewReader([]byte(`{"fullscreen":false}`)))
+	reqFullscreen.Header.Set("Content-Type", "application/json")
+	reqFullscreen.Header.Set("Authorization", "Bearer "+token)
+	respFullscreen, err := s.app.Test(reqFullscreen)
+	testutil.ExpectedNoError(t, err)
+	testutil.ExpectedEqual(t, respFullscreen.StatusCode, http.StatusOK)
+	testutil.ExpectedFalse(t, cfg.GetWebViewFullscreen())
+
+	// Verify GET /api/webview reflects fullscreen: false
+	reqWVCheck := httptest.NewRequest("GET", "/api/webview", nil)
+	respWVCheck, err := s.app.Test(reqWVCheck)
+	testutil.ExpectedNoError(t, err)
+	testutil.ExpectedEqual(t, respWVCheck.StatusCode, http.StatusOK)
+	var wvCheckData map[string]interface{}
+	err = json.NewDecoder(respWVCheck.Body).Decode(&wvCheckData)
+	testutil.ExpectedNoError(t, err)
+	testutil.ExpectedEqual(t, wvCheckData["fullscreen"], false)
+
 	// 6. Reload kiosk callback with Bearer token
 	reloadCalled := false
 	s.SetKioskReloadCallback(func() {
@@ -360,4 +385,3 @@ func TestServer_AuthAndPrivilegedRoutes(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 	testutil.ExpectedTrue(t, exitCalled)
 }
-

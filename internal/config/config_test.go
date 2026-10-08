@@ -257,9 +257,18 @@ func TestWebViewConfig(t *testing.T) {
 	testutil.ExpectedEqual(t, cm.HasWebViewPIN(), true) // default is "0000"
 	testutil.ExpectedTrue(t, cm.CheckWebViewPIN("0000"))
 	testutil.ExpectedFalse(t, cm.CheckWebViewPIN("1234"))
+	testutil.ExpectedEqual(t, cm.GetWebViewFullscreen(), true) // default is true
+
+	// Test Fullscreen toggle
+	err := cm.SetWebViewFullscreen(false)
+	testutil.ExpectedNoError(t, err)
+	testutil.ExpectedEqual(t, cm.GetWebViewFullscreen(), false)
+	err = cm.SetWebViewFullscreen(true)
+	testutil.ExpectedNoError(t, err)
+	testutil.ExpectedEqual(t, cm.GetWebViewFullscreen(), true)
 
 	// Test Invalid URLs
-	err := cm.SetWebViewURL("not_a_url")
+	err = cm.SetWebViewURL("not_a_url")
 	testutil.ExpectedError(t, err)
 
 	err = cm.SetWebViewURL("ftp://example.com")
@@ -361,4 +370,13 @@ func TestWebViewExitCorner(t *testing.T) {
 	testutil.ExpectedError(t, err)
 }
 
-
+func TestWebViewFullscreen_DefaultFromEmptyJSON(t *testing.T) {
+	tempDir := t.TempDir()
+	configFile := filepath.Join(tempDir, "config.json")
+	cm := &Manager{path: configFile, Data: defaults()}
+	err := os.WriteFile(configFile, []byte(`{"webview_url":"https://example.com"}`), 0644)
+	testutil.ExpectedNoError(t, err)
+	err = cm.Load()
+	testutil.ExpectedNoError(t, err)
+	testutil.ExpectedTrue(t, cm.GetWebViewFullscreen())
+}

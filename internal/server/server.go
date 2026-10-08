@@ -195,6 +195,7 @@ func NewWithHost(host string, port int, mgr *printer.Manager, cfg *config.Manage
 	app.Post("/api/webview/url", srv.requireAuth, srv.handleSetWebViewURL)
 	app.Post("/api/webview/enabled", srv.requireAuth, srv.handleSetWebViewEnabled)
 	app.Post("/api/webview/corners", srv.requireAuth, srv.handleSetWebViewExitCorner)
+	app.Post("/api/webview/fullscreen", srv.requireAuth, srv.handleSetWebViewFullscreen)
 	app.Post("/api/webview/reload", srv.requireAuth, srv.handleReloadWebView)
 	app.All("/api/kiosk/exit", func(c fiber.Ctx) error {
 		srv.mu.RLock()

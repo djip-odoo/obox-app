@@ -8,7 +8,7 @@ import { PINContext } from "../contexts/PINContext";
 import { WebViewContext } from "../contexts/WebViewContext";
 import { backendService } from "../services/backend";
 import WebViewDialog from "./WebViewDialog";
-import TroubleshootDialog from "./TroubleshootDialog";
+// import TroubleshootDialog from "./TroubleshootDialog";
 
 export default function PrinterList() {
   const printerContext = useContext(PrinterContext);
@@ -98,7 +98,7 @@ export default function PrinterList() {
       <div className="mt-4 sm:mt-6 w-full flex flex-col gap-3 max-w-full sm:max-w-md md:max-w-lg lg:max-w-xl">
         <NetworkIpDialog />
         <WebViewDialog />
-        <TroubleshootDialog />
+        {/* <TroubleshootDialog /> */}
         {isWindowsKioskServer && (
           <>
             <button

@@ -36,6 +36,10 @@ func createMenu(app *App) *menu.Menu {
 		handleNetworkPrintingToggle(app, cb)
 	})
 
+	appMenu.AddCheckbox("Fullscreen WebApp", app.config.GetWebViewFullscreen(), nil, func(cb *menu.CallbackData) {
+		_ = app.SetWebViewFullscreen(cb.MenuItem.Checked)
+	})
+
 	appMenu.AddText("Set PIN", nil, func(_ *menu.CallbackData) {
 		wailsruntime.EventsEmit(app.ctx, "open-set-pin-dialog")
 	})

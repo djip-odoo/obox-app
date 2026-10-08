@@ -43,6 +43,7 @@ export interface ApiWebViewConfig {
   enabled: boolean;
   hasPIN: boolean;
   exitCorners?: string[];
+  fullscreen?: boolean;
   reloadCount?: number;
 }
 
@@ -204,6 +205,10 @@ export function apiSetWebViewEnabled(enabled: boolean): Promise<{ ok: boolean }>
 
 export function apiSetWebViewExitCorners(corners: string[]): Promise<{ ok: boolean }> {
   return apiPost<{ ok: boolean }>("/api/webview/corners", { corners }, true);
+}
+
+export function apiSetWebViewFullscreen(fullscreen: boolean): Promise<{ ok: boolean }> {
+  return apiPost<{ ok: boolean }>("/api/webview/fullscreen", { fullscreen }, true);
 }
 
 export function apiTestPrint(printerId: string): Promise<{ ok: boolean }> {

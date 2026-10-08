@@ -413,6 +413,13 @@ func TestApp_PinAuthAndWebAppNavigation(t *testing.T) {
 	testutil.ExpectedEqual(t, app.GetWebViewConfig().ExitCorners[1], "bottom-right")
 	scriptMulti := app.getGestureScript()
 	testutil.ExpectedContains(t, scriptMulti, `EXIT_CORNERS = ["top-left","bottom-right"]`)
+
+	// Test Fullscreen config and toggle
+	testutil.ExpectedTrue(t, app.GetWebViewConfig().Fullscreen)
+	err = app.SetWebViewFullscreen(false)
+	testutil.ExpectedNoError(t, err)
+	testutil.ExpectedFalse(t, app.GetWebViewConfig().Fullscreen)
+	err = app.SetWebViewFullscreen(true)
+	testutil.ExpectedNoError(t, err)
+	testutil.ExpectedTrue(t, app.GetWebViewConfig().Fullscreen)
 }
-
-

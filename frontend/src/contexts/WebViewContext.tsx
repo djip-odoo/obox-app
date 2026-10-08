@@ -17,6 +17,7 @@ export type WebViewConfig = {
   enabled: boolean;
   hasPIN: boolean;
   exitCorners?: string[];
+  fullscreen?: boolean;
   reloadCount?: number;
 };
 
@@ -30,6 +31,7 @@ type WebViewContextType = {
     saveURL: (url: string) => Promise<void>;
     savePIN: (pin: string) => Promise<void>;
     saveExitCorners: (corners: string[]) => Promise<void>;
+    saveFullscreen: (fullscreen: boolean) => Promise<void>;
     toggleEnabled: (v: boolean) => Promise<void>;
     validatePIN: (pin: string) => Promise<boolean>;
     exitKiosk: () => Promise<void>;
@@ -66,7 +68,7 @@ export const WebViewContextWrapper = ({
           if (cfg.enabled && cfg.url && (backendService.isWails || isLocal)) {
             setIsKioskActive(true);
             if (backendService.isWails) {
-              backendService.setWindowFullscreen(true);
+              backendService.setWindowFullscreen(cfg.fullscreen ?? true);
             }
           }
           return cfg;
@@ -75,8 +77,10 @@ export const WebViewContextWrapper = ({
         if (prev.enabled !== cfg.enabled) {
           setIsKioskActive(cfg.enabled);
           if (backendService.isWails) {
-            backendService.setWindowFullscreen(cfg.enabled);
+            backendService.setWindowFullscreen(cfg.enabled ? (cfg.fullscreen ?? true) : false);
           }
+        } else if (backendService.isWails && cfg.enabled && prev.fullscreen !== cfg.fullscreen) {
+          backendService.setWindowFullscreen(cfg.fullscreen ?? true);
         }
 
         if (
@@ -93,6 +97,7 @@ export const WebViewContextWrapper = ({
           prev.url === cfg.url &&
           prev.enabled === cfg.enabled &&
           prev.hasPIN === cfg.hasPIN &&
+          prev.fullscreen === cfg.fullscreen &&
           prevCorners === nextCorners &&
           prev.reloadCount === cfg.reloadCount
         ) {
@@ -132,10 +137,10 @@ export const WebViewContextWrapper = ({
 
     const unsubKiosk = EventsOn("kiosk-state-changed", async (enabled: boolean) => {
       setIsKioskActive(enabled);
-      await backendService.setWindowFullscreen(enabled);
       try {
         const cfg = await backendService.getWebViewConfig();
         setConfig(cfg);
+        await backendService.setWindowFullscreen(enabled ? (cfg.fullscreen ?? true) : false);
       } catch {
         /* ignore */
       }
@@ -181,11 +186,17 @@ export const WebViewContextWrapper = ({
     setConfig(cfg);
   };
 
+  const saveFullscreen = async (fullscreen: boolean) => {
+    await backendService.setWebViewFullscreen(fullscreen);
+    const cfg = await backendService.getWebViewConfig();
+    setConfig(cfg);
+  };
+
   const toggleEnabled = async (v: boolean) => {
     await backendService.setWebViewEnabled(v);
     setIsKioskActive(v);
     if (backendService.isWails) {
-      await backendService.setWindowFullscreen(v);
+      await backendService.setWindowFullscreen(v ? (config?.fullscreen ?? true) : false);
     }
     const cfg = await backendService.getWebViewConfig();
     setConfig(cfg);
@@ -226,6 +237,7 @@ export const WebViewContextWrapper = ({
           saveURL,
           savePIN,
           saveExitCorners,
+          saveFullscreen,
           toggleEnabled,
           validatePIN,
           enterKiosk,

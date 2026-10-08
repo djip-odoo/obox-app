@@ -32,17 +32,20 @@ type AppConfig struct {
 	WebViewURL         string      `json:"webview_url,omitempty"`
 	WebViewPIN         string      `json:"webview_pin,omitempty"`
 	WebViewEnabled     bool        `json:"webview_enabled"`
+	WebViewFullscreen  *bool       `json:"webview_fullscreen,omitempty"`
 	WebViewExitCorners []string    `json:"webview_exit_corners,omitempty"`
 	NetworkPrinting    bool        `json:"network_printing"`
 	Kiosk              KioskConfig `json:"kiosk,omitempty"`
 }
 
 func defaults() AppConfig {
+	defaultFullscreen := true
 	return AppConfig{
 		Port:               0,
 		NetworkPrinting:    false,
 		WebViewPIN:         "0000",
 		WebViewExitCorners: []string{"top-right"},
+		WebViewFullscreen:  &defaultFullscreen,
 		Kiosk: KioskConfig{
 			Enabled: false,
 		},
@@ -317,6 +320,24 @@ func (cm *Manager) SetWebViewEnabled(v bool) error {
 		return errors.New("cannot enable kiosk mode: URL is not configured")
 	}
 	cm.Data.WebViewEnabled = v
+	return cm.saveLocked()
+}
+
+// GetWebViewFullscreen returns whether kiosk mode runs in fullscreen. Defaults to true.
+func (cm *Manager) GetWebViewFullscreen() bool {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	if cm.Data.WebViewFullscreen == nil {
+		return true
+	}
+	return *cm.Data.WebViewFullscreen
+}
+
+// SetWebViewFullscreen persists the fullscreen kiosk setting.
+func (cm *Manager) SetWebViewFullscreen(fullscreen bool) error {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+	cm.Data.WebViewFullscreen = &fullscreen
 	return cm.saveLocked()
 }
 

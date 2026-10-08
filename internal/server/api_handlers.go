@@ -50,6 +50,7 @@ type apiWebViewConfig struct {
 	HasPIN      bool     `json:"hasPIN"`
 	ExitCorner  string   `json:"exitCorner"`
 	ExitCorners []string `json:"exitCorners"`
+	Fullscreen  bool     `json:"fullscreen"`
 	ReloadCount int64    `json:"reloadCount"`
 }
 
@@ -139,7 +140,9 @@ func (s *Server) handleGetLANPrinterStatus(c fiber.Ctx) error {
 
 func (s *Server) handleGetWebView(c fiber.Ctx) error {
 	if s.cfg == nil {
-		return c.JSON(apiWebViewConfig{})
+		return c.JSON(apiWebViewConfig{
+			Fullscreen: true,
+		})
 	}
 	return c.JSON(apiWebViewConfig{
 		URL:         s.cfg.GetWebViewURL(),
@@ -147,6 +150,7 @@ func (s *Server) handleGetWebView(c fiber.Ctx) error {
 		HasPIN:      s.cfg.HasWebViewPIN(),
 		ExitCorner:  s.cfg.GetWebViewExitCorner(),
 		ExitCorners: s.cfg.GetWebViewExitCorners(),
+		Fullscreen:  s.cfg.GetWebViewFullscreen(),
 		ReloadCount: s.reloadCount.Load(),
 	})
 }
@@ -313,6 +317,27 @@ func (s *Server) handleSetWebViewExitCorner(c fiber.Ctx) error {
 	return c.JSON(fiber.Map{"ok": true})
 }
 
+type setWebViewFullscreenReq struct {
+	Fullscreen bool `json:"fullscreen"`
+}
+
+func (s *Server) handleSetWebViewFullscreen(c fiber.Ctx) error {
+	var req setWebViewFullscreenReq
+	if err := bindJSON(c, &req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request"})
+	}
+	if err := s.cfg.SetWebViewFullscreen(req.Fullscreen); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+	s.mu.RLock()
+	cb := s.onConfigChanged
+	s.mu.RUnlock()
+	if cb != nil {
+		cb()
+	}
+	return c.JSON(fiber.Map{"ok": true})
+}
+
 func (s *Server) handleReloadWebView(c fiber.Ctx) error {
 	s.reloadCount.Add(1)
 	s.mu.RLock()
@@ -348,4 +373,3 @@ func (s *Server) handleQuitApp(c fiber.Ctx) error {
 	}()
 	return c.JSON(fiber.Map{"ok": true})
 }
-

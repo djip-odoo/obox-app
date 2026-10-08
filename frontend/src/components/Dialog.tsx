@@ -24,7 +24,21 @@ interface DialogProps {
   showTitleDivider?: boolean;
   /** Bump this value (e.g. a counter) to open the dialog programmatically, without an openButton. */
   openSignal?: number;
+  size?: "sm" | "md" | "lg" | "xl" | "2xl" | "3xl" | "4xl" | "5xl" | "full";
+  className?: string;
 }
+
+const sizeClasses: Record<string, string> = {
+  sm: "sm:max-w-sm",
+  md: "sm:max-w-md",
+  lg: "sm:max-w-lg",
+  xl: "sm:max-w-xl",
+  "2xl": "sm:max-w-2xl",
+  "3xl": "sm:max-w-3xl",
+  "4xl": "sm:max-w-4xl",
+  "5xl": "sm:max-w-5xl",
+  full: "sm:max-w-6xl",
+};
 
 export default function Dialog({
   title,
@@ -35,6 +49,8 @@ export default function Dialog({
   onOpen,
   showTitleDivider = false,
   openSignal,
+  size = "md",
+  className,
 }: DialogProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
@@ -134,9 +150,9 @@ export default function Dialog({
             />
 
             <div
-              className={`relative bg-white rounded-t-2xl sm:rounded-2xl w-full max-w-full sm:max-w-md max-h-[92vh] sm:max-h-[calc(100vh-2rem)] shadow-2xl flex flex-col overflow-hidden transition-transform ${
+              className={`relative bg-white rounded-t-2xl sm:rounded-2xl w-full max-w-full ${sizeClasses[size] ?? "sm:max-w-md"} max-h-[92vh] sm:max-h-[calc(100vh-2rem)] shadow-2xl flex flex-col overflow-hidden transition-transform ${
                 isOpen ? "translate-y-0" : "translate-y-4 sm:translate-y-0"
-              }`}
+              } ${className ?? ""}`}
             >
               {/* Header (fixed at top) */}
               <div
