@@ -24,6 +24,16 @@ const sampleReleaseFeedJSON = `{
       "name": "obox-app-linux64",
       "size": 123,
       "browser_download_url": "http://127.0.0.1/download/linux64"
+    },
+    {
+      "name": "obox-app-win64-installer",
+      "size": 123,
+      "browser_download_url": "http://127.0.0.1/download/win64"
+    },
+    {
+      "name": "obox-app-macos",
+      "size": 123,
+      "browser_download_url": "http://127.0.0.1/download/macos"
     }
   ]
 }`

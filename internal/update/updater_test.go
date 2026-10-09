@@ -33,12 +33,26 @@ func TestUpdater_Lifecycle(t *testing.T) {
 					{
 						"name": "obox-app-linux64",
 						"size": %d,
-						"browser_download_url": "%s/download/linux64",
+						"browser_download_url": "%s/download/app",
+						"digest": "sha256:%s"
+					},
+					{
+						"name": "obox-app-win64-installer",
+						"size": %d,
+						"browser_download_url": "%s/download/app",
+						"digest": "sha256:%s"
+					},
+					{
+						"name": "obox-app-macos",
+						"size": %d,
+						"browser_download_url": "%s/download/app",
 						"digest": "sha256:%s"
 					}
 				]
-			}`, len(binaryPayload), "https://"+r.Host, binaryHash)
-		case "/download/linux64":
+			}`, len(binaryPayload), "https://"+r.Host, binaryHash,
+				len(binaryPayload), "https://"+r.Host, binaryHash,
+				len(binaryPayload), "https://"+r.Host, binaryHash)
+		case "/download/app", "/download/linux64":
 			w.Header().Set("Content-Length", fmt.Sprint(len(binaryPayload)))
 			_, _ = w.Write(binaryPayload)
 		default:
@@ -127,7 +141,11 @@ func TestUpdater_ConcurrencyProtection(t *testing.T) {
 		// Slow response
 		time.Sleep(100 * time.Millisecond)
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"tag_name": "1.2.0", "draft": false, "prerelease": false, "assets": [{"name": "obox-app-linux64", "browser_download_url": "http://127.0.0.1/download/linux64"}]}`))
+		_, _ = w.Write([]byte(`{"tag_name": "1.2.0", "draft": false, "prerelease": false, "assets": [
+			{"name": "obox-app-linux64", "browser_download_url": "http://127.0.0.1/download/linux64"},
+			{"name": "obox-app-win64-installer", "browser_download_url": "http://127.0.0.1/download/win64"},
+			{"name": "obox-app-macos", "browser_download_url": "http://127.0.0.1/download/macos"}
+		]}`))
 	}))
 	defer server.Close()
 
