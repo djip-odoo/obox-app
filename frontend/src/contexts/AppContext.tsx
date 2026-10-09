@@ -1,6 +1,7 @@
 import { createContext, useEffect, useState } from "react";
 import { main } from "../../wailsjs/go/models";
 import { AppVariable } from "../../wailsjs/go/main/App";
+import { EventsOn } from "../../wailsjs/runtime/runtime";
 
 const RETRY_INTERVAL = 5000;
 
@@ -13,6 +14,10 @@ type AppContextType = {
     isMac: boolean;
     isLinux: boolean;
     serverIsRunning: boolean;
+    version: string;
+    buildTime: string;
+    commit: string;
+    debugMode: boolean;
   };
   actions: {};
 };
@@ -27,6 +32,10 @@ export const AppContextWrapper = ({ children }: AppContextWrapper) => {
   const [app, setApp] = useState<main.AppVariable | null>(null);
 
   const os = app?.os || null;
+  const version = app?.version || "";
+  const buildTime = app?.buildTime || "";
+  const commit = app?.commit || "";
+  const debugMode = app?.debugMode ?? false;
   const data = {
     app,
     os,
@@ -34,6 +43,10 @@ export const AppContextWrapper = ({ children }: AppContextWrapper) => {
     isMac: os === "darwin",
     isLinux: os === "linux",
     serverIsRunning: app?.serverRunning ?? false,
+    version,
+    buildTime,
+    commit,
+    debugMode,
   };
   const setters = {};
   const actions = {};
@@ -66,6 +79,14 @@ export const AppContextWrapper = ({ children }: AppContextWrapper) => {
         clearTimeout(retryId);
       }
     };
+  }, []);
+
+  useEffect(() => {
+    return EventsOn("app:variables_changed", (variables: main.AppVariable) => {
+      if (variables) {
+        setApp(main.AppVariable.createFrom(variables));
+      }
+    });
   }, []);
 
   return (
