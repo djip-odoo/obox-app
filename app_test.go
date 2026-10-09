@@ -76,6 +76,7 @@ func TestApp_AppVariableAndPrintersAndGetPrinterUrl(t *testing.T) {
 	testutil.ExpectedEqual(t, appVariable.Version, buildinfo.Version)
 	testutil.ExpectedEqual(t, appVariable.BuildTime, buildinfo.BuildTime)
 	testutil.ExpectedEqual(t, appVariable.Commit, buildinfo.Commit)
+	testutil.ExpectedEqual(t, appVariable.IsDev, wailsruntime.Environment(app.ctx).BuildType == "dev")
 
 	// Verify Printers() includes the configured LAN printer
 	printers := app.Printers()

@@ -16,6 +16,7 @@ import (
 var (
 	windowsApplyMu   sync.Mutex
 	installerStarted bool
+	shellExecute     = windows.ShellExecute
 )
 
 // Apply launches the downloaded installer with elevation and normal window
@@ -49,7 +50,7 @@ func Apply(downloaded string) error {
 	file := windows.StringToUTF16Ptr(downloaded)
 	dir := windows.StringToUTF16Ptr(filepath.Dir(downloaded))
 
-	if err := windows.ShellExecute(0, verb, file, nil, dir, windows.SW_SHOWNORMAL); err != nil {
+	if err := shellExecute(0, verb, file, nil, dir, windows.SW_SHOWNORMAL); err != nil {
 		err = fmt.Errorf("apply failed: cannot launch installer %s: %w", downloaded, err)
 		logger.Errorf("%v", err)
 		return err

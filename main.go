@@ -16,6 +16,7 @@ import (
 	"context"
 	"embed"
 	"os"
+	"slices"
 
 	"obox-app/internal/logger"
 
@@ -35,12 +36,9 @@ func main() {
 	app := NewApp()
 
 	windowStartState := options.Normal
-	for _, arg := range os.Args[1:] {
-		if arg == "--minimized" {
-			logger.Debugf("Application started with --minimized flag")
-			windowStartState = options.Minimised
-			break
-		}
+	if slices.Contains(os.Args[1:], "--minimized") {
+		logger.Debugf("Application started with --minimized flag")
+		windowStartState = options.Minimised
 	}
 
 	err := wails.Run(&options.App{

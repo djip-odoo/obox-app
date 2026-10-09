@@ -15,6 +15,7 @@ import {
 } from "../../wailsjs/go/main/App";
 import { update } from "../../wailsjs/go/models";
 import { EventsOn } from "../../wailsjs/runtime/runtime";
+import { AppContext } from "./AppContext";
 
 // Matches backend State constants in internal/update/types.go
 export type UpdateState =
@@ -119,7 +120,8 @@ interface UpdateContextWrapperProps {
 }
 
 export const UpdateContextWrapper = ({ children }: UpdateContextWrapperProps) => {
-  const [status, setStatus] = useState<UpdateState>("checking");
+  const appContext = useContext(AppContext);
+  const [status, setStatus] = useState<UpdateState>(appContext?.data?.isDev ? "idle" : "checking");
   const [info, setInfo] = useState<update.Info | null>(null);
   const [error, setError] = useState<string>("");
   const [progress, setProgress] = useState(0);
@@ -245,8 +247,16 @@ export const UpdateContextWrapper = ({ children }: UpdateContextWrapperProps) =>
   }, []);
 
   useEffect(() => {
-    checkForUpdate()
+    // In dev mode from server, do not automatically check for updates on startup/restart
+    if (appContext?.data?.isDev) {
+      setStatus("idle");
+      return;
+    }
 
+    checkForUpdate();
+  }, [checkForUpdate, appContext?.data?.isDev]);
+
+  useEffect(() => {
     // 3. Download progress events from backend
     const unsubscribeProgress = EventsOn("update-progress", (data: ProgressData) => {
       if (!data) return;

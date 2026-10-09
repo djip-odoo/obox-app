@@ -104,6 +104,7 @@ type AppVariable struct {
 	BuildTime     string `json:"buildTime"`
 	Commit        string `json:"commit"`
 	DebugMode     bool   `json:"debugMode"`
+	IsDev         bool   `json:"isDev"`
 }
 
 type Printers struct {
@@ -167,7 +168,12 @@ func (a *App) AppVariable() AppVariable {
 		BuildTime:     buildinfo.BuildTime,
 		Commit:        buildinfo.Commit,
 		DebugMode:     a.config.IsDebugMode(),
+		IsDev:         a.IsDevMode(),
 	}
+}
+
+func (a *App) IsDevMode() bool {
+	return wailsruntime.Environment(a.ctx).BuildType == "dev"
 }
 
 func (a *App) GetPrinterUrl(id string) string {
@@ -467,6 +473,7 @@ func (a *App) ApplyUpdate() error {
 	}
 	return nil
 }
+
 // CancelUpdate aborts an in-progress update download and resets updater state to idle.
 func (a *App) CancelUpdate() {
 	update.GetUpdaterInstance().Reset()

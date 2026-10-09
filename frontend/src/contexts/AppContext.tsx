@@ -18,6 +18,7 @@ type AppContextType = {
     buildTime: string;
     commit: string;
     debugMode: boolean;
+    isDev: boolean;
   };
   actions: {};
 };
@@ -36,6 +37,7 @@ export const AppContextWrapper = ({ children }: AppContextWrapper) => {
   const buildTime = app?.buildTime || "";
   const commit = app?.commit || "";
   const debugMode = app?.debugMode ?? false;
+  const isDev = app?.isDev ?? true;
   const data = {
     app,
     os,
@@ -47,6 +49,7 @@ export const AppContextWrapper = ({ children }: AppContextWrapper) => {
     buildTime,
     commit,
     debugMode,
+    isDev,
   };
   const setters = {};
   const actions = {};
