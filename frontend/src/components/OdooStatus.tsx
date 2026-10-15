@@ -181,7 +181,7 @@ export default function OdooStatus() {
   const fields: Omit<FieldCardProps, "isCopied" | "onCopy">[] = [
     {
       label: "IP Address",
-      value: appData.ipAddress,
+      value: appData.server.ipAddress,
       title: "Network IP Address",
       iconBg: "bg-blue-50 text-blue-600 border-blue-100/60",
       icon: <IpIcon className="w-3.5 h-3.5" />,
