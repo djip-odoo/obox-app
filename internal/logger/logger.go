@@ -40,7 +40,7 @@ func InitLogger() {
 	})
 
 	log.SetLevel(logrus.InfoLevel)
-	Infof("Starting Obox App v: %s", buildinfo.GetVersionInfo())
+	Infof("Starting Obox App (%s)", buildinfo.GetVersionInfo())
 }
 
 // Wrappers
@@ -56,6 +56,9 @@ func Debug(args ...interface{})                 { log.Debug(args...) }
 func Debugf(format string, args ...interface{}) { log.Debugf(format, args...) }
 
 func SetDebugMode(enabled bool) {
+	if enabled == IsDebugMode() {
+		return
+	}
 	if enabled {
 		log.SetLevel(logrus.DebugLevel)
 		Infof("Debug mode enabled (Debug log level)")

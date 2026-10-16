@@ -8,11 +8,20 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"runtime"
 	"testing"
 	"time"
 )
 
-const sampleReleaseFeedJSON = `{
+func sampleReleaseFeedJSON() string {
+	name := assetNameLinux + "-1.0.5"
+	switch runtime.GOOS {
+	case "windows":
+		name = assetNameWindows + "-1.0.5.exe"
+	case "darwin":
+		name = assetNameMacos + "-1.0.5"
+	}
+	return fmt.Sprintf(`{
   "id": 9999,
   "tag_name": "1.0.5",
   "name": "Release 1.0.5",
@@ -21,17 +30,18 @@ const sampleReleaseFeedJSON = `{
   "prerelease": false,
   "assets": [
     {
-      "name": "obox-app-linux64",
+      "name": "%s",
       "size": 123,
-      "browser_download_url": "http://127.0.0.1/download/linux64"
+      "browser_download_url": "http://127.0.0.1/download"
     }
   ]
-}`
+}`, name)
+}
 
 func TestCheck_VersionComparison(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(sampleReleaseFeedJSON))
+		_, _ = w.Write([]byte(sampleReleaseFeedJSON()))
 	}))
 	defer server.Close()
 

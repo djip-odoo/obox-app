@@ -1,8 +1,12 @@
+import { useContext } from "react";
 import { BrowserOpenURL } from "../../wailsjs/runtime/runtime";
+import { AppContext } from "../contexts/AppContext";
 import { useUpdate } from "../contexts/UpdateContext";
 import CloseButton from "./CloseButton";
 
 export default function UpdateBanner() {
+  const appContext = useContext(AppContext);
+  const isWindows = appContext?.data?.system?.os === "windows";
   const {
     data: { info, progress },
     actions: { handleUpdate, handleCancel, handleDismiss },
@@ -122,7 +126,9 @@ export default function UpdateBanner() {
                 Installing update {info.latestVersion}…
               </p>
               <p className="text-xs text-gray-500 mt-0.5">
-                The app will close to complete the update.
+                {isWindows
+                  ? "The app will close to launch the installer. Leave 'Run Obox App' checked to restart."
+                  : "The app will close to complete the update."}
               </p>
             </div>
           </div>

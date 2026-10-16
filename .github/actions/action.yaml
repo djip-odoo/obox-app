@@ -154,7 +154,7 @@ runs:
                 - name: Set Version & Build Time
                   shell: bash
                   run: |
-                    echo "VERSION=$(git describe --tags --always)" >> $GITHUB_ENV
+                    echo "VERSION=$(git describe --tags 2>/dev/null || echo "local")" >> $GITHUB_ENV
                     echo "BUILD_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")" >> $GITHUB_ENV
                     echo "COMMIT=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
 
@@ -162,13 +162,13 @@ runs:
                 - name: Build App
                   if: inputs.build == 'true' && runner.os == 'macOS'
                   working-directory: ${{ inputs.app-working-directory }}
-                  run: wails build --platform ${{inputs.build-platform}} -o ${{inputs.build-name}}-${VERSION} -ldflags "-X 'obox-app/buildinfo.Version=${VERSION}' -X 'obox-app/buildinfo.BuildTime=${BUILD_TIME}' -X 'obox-app/buildinfo.Commit=${COMMIT}' -X 'obox-app/internal/update.Version=${VERSION}'"
+                  run: wails build --platform ${{inputs.build-platform}} -o ${{inputs.build-name}}-${VERSION} -ldflags "-X 'obox-app/buildinfo.Version=${VERSION}' -X 'obox-app/buildinfo.BuildTime=${BUILD_TIME}' -X 'obox-app/buildinfo.Commit=${COMMIT}'"
                   shell: bash
                 - name: Build App
                   if: inputs.build == 'true' &&  runner.os == 'Linux'
                   working-directory: ${{ inputs.app-working-directory }}
                   # -tags webkit2_41 https://wails.io/docs/gettingstarted/building/
-                  run: wails build --platform ${{inputs.build-platform}} -tags webkit2_41 -webview2 ${{inputs.wails-build-webview2}} -ldflags "-X 'obox-app/buildinfo.Version=${VERSION}' -X 'obox-app/buildinfo.BuildTime=${BUILD_TIME}' -X 'obox-app/buildinfo.Commit=${COMMIT}' -X 'obox-app/internal/update.Version=${VERSION}'" -o ${{inputs.build-name}}-${VERSION}
+                  run: wails build --platform ${{inputs.build-platform}} -tags webkit2_41 -webview2 ${{inputs.wails-build-webview2}} -ldflags "-X 'obox-app/buildinfo.Version=${VERSION}' -X 'obox-app/buildinfo.BuildTime=${BUILD_TIME}' -X 'obox-app/buildinfo.Commit=${COMMIT}'" -o ${{inputs.build-name}}-${VERSION}
                   shell: bash
 
                 - name: Get Go path
@@ -185,7 +185,7 @@ runs:
                     wails build --platform ${{inputs.build-platform}} \
                       -webview2 ${{inputs.wails-build-webview2}} \
                       -nsis \
-                      -ldflags "-X 'obox-app/buildinfo.Version=${VERSION}' -X 'obox-app/buildinfo.BuildTime=${BUILD_TIME}' -X 'obox-app/buildinfo.Commit=${COMMIT}' -X 'obox-app/internal/update.Version=${VERSION}'" \
+                      -ldflags "-X 'obox-app/buildinfo.Version=${VERSION}' -X 'obox-app/buildinfo.BuildTime=${BUILD_TIME}' -X 'obox-app/buildinfo.Commit=${COMMIT}'" \
                       -o ${{inputs.build-name}}
                     mv build/bin/*-installer.exe build/bin/${{inputs.build-name}}-installer-${VERSION}.exe
                     find build/bin/ -type f ! -name "${{inputs.build-name}}-installer-${VERSION}.exe" -delete

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"obox-app/buildinfo"
 	"obox-app/internal/logger"
 )
 
@@ -38,16 +40,36 @@ type DownloadResult struct {
 }
 
 func DownloadAsset(ctx context.Context, asset *Asset, expectedSHA string, progress ProgressFunc) (*DownloadResult, error) {
+	expectedSHA = strings.ToLower(strings.TrimSpace(expectedSHA))
+	if expectedSHA == "" {
+		return nil, fmt.Errorf("no checksum available for asset %s", asset.Name)
+	}
+
 	// Ensure we do not inherit a short client-level whole-body timeout for downloading large binaries.
 	// We preserve the transport (for proxy/custom TLS/mocking in tests) while setting Timeout = 0,
-	// allowing ctx to manage cancellation and deadlines.
-	dlClient := &http.Client{Timeout: 0}
+	// allowing ctx to manage cancellation and deadlines. We validate redirects against trusted hosts.
+	dlClient := &http.Client{
+		Timeout: 0,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 10 {
+				return errors.New("stopped after 10 redirects")
+			}
+			return ValidateDownloadURL(req.URL.String())
+		},
+	}
 	if client != nil {
 		dlClient.Transport = client.Transport
-		dlClient.CheckRedirect = client.CheckRedirect
 		dlClient.Jar = client.Jar
+		if client.CheckRedirect != nil {
+			userRedirect := client.CheckRedirect
+			dlClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+				if err := ValidateDownloadURL(req.URL.String()); err != nil {
+					return err
+				}
+				return userRedirect(req, via)
+			}
+		}
 	}
-	client = dlClient
 
 	tempDir, err := os.MkdirTemp("", "obox-app-update-*")
 	if err != nil {
@@ -112,10 +134,10 @@ func DownloadAsset(ctx context.Context, asset *Asset, expectedSHA string, progre
 		cleanup()
 		return nil, fmt.Errorf("failed to build download request: %w", err)
 	}
-	req.Header.Set("User-Agent", requestUA+"/"+Version)
+	req.Header.Set("User-Agent", requestUA+"/"+buildinfo.Version)
 	req.Header.Set("Accept", "application/octet-stream")
 
-	resp, err := client.Do(req)
+	resp, err := dlClient.Do(req)
 	if err != nil {
 		cleanup()
 		if stalled.Load() {
@@ -232,19 +254,13 @@ func DownloadAsset(ctx context.Context, asset *Asset, expectedSHA string, progre
 	computedHash := hex.EncodeToString(hasher.Sum(nil))
 	expectedSHA = strings.ToLower(strings.TrimSpace(expectedSHA))
 
-	// Verify SHA-256 if expected hash is available
-	if expectedSHA != "" {
-		if computedHash != expectedSHA {
-			cleanup()
-			logger.Errorf("Update checksum mismatch: got %s, want %s", computedHash, expectedSHA)
-			return nil, fmt.Errorf("%w: got %s, expected %s", ErrChecksumMismatch, computedHash, expectedSHA)
-		}
-		logger.Infof("Update checksum verified: %s", computedHash)
-	} else {
-		logger.Warnf("No checksum available for asset %s; verified size (%d bytes) only", asset.Name, downloaded)
+	// Verify SHA-256 hash
+	if computedHash != expectedSHA {
 		cleanup()
-		return nil, fmt.Errorf("no checksum available for asset %s", asset.Name)
+		logger.Errorf("Update checksum mismatch: got %s, want %s", computedHash, expectedSHA)
+		return nil, fmt.Errorf("%w: got %s, expected %s", ErrChecksumMismatch, computedHash, expectedSHA)
 	}
+	logger.Infof("Update checksum verified: %s", computedHash)
 
 	// Ensure executable permissions (Unix)
 	_ = os.Chmod(tempFilePath, 0o755)

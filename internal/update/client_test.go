@@ -123,17 +123,21 @@ func TestFetchLatestRelease_MalformedJSON(t *testing.T) {
 
 func TestFetchChecksumFile(t *testing.T) {
 	checksumsContent := "d5435a220dfde5650d9bc406313d4ab67c8b57424e79caa19fa1f1ac0c9d752e  obox-app-linux64\n"
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(checksumsContent))
 	}))
 	defer server.Close()
 
+	oldHosts := allowedHosts
+	allowedHosts = append(allowedHosts, "127.0.0.1")
+	defer func() { allowedHosts = oldHosts }()
+
 	oldClient := client
 	client = server.Client()
 	defer func() { client = oldClient }()
 
-	sums, err := FetchChecksumFile(server.URL + "/SHA256SUMS")
+	sums, err := FetchChecksumFile(context.Background(), server.URL+"/SHA256SUMS")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

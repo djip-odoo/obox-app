@@ -90,6 +90,18 @@ func TestDownloadAsset_ChecksumMismatch(t *testing.T) {
 	}
 }
 
+func TestDownloadAsset_MissingChecksum(t *testing.T) {
+	asset := &Asset{
+		Name:        "test-app",
+		DownloadURL: "https://github.com/test",
+	}
+
+	_, err := DownloadAsset(context.Background(), asset, "", nil)
+	if err == nil {
+		t.Fatal("expected error for missing checksum, got nil")
+	}
+}
+
 func TestDownloadAsset_EmptyFile(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Empty response
@@ -105,7 +117,8 @@ func TestDownloadAsset_EmptyFile(t *testing.T) {
 		DownloadURL: server.URL,
 	}
 
-	_, err := DownloadAsset(context.Background(), asset, "", nil)
+	dummySHA := "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+	_, err := DownloadAsset(context.Background(), asset, dummySHA, nil)
 	if err == nil {
 		t.Fatal("expected error for empty download, got nil")
 	}
@@ -132,7 +145,8 @@ func TestDownloadAsset_ContextCancellation(t *testing.T) {
 		DownloadURL: server.URL,
 	}
 
-	_, err := DownloadAsset(ctx, asset, "", nil)
+	dummySHA := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	_, err := DownloadAsset(ctx, asset, dummySHA, nil)
 	if err == nil {
 		t.Fatal("expected cancellation error, got nil")
 	}
@@ -162,7 +176,8 @@ func TestDownloadAsset_StallTimeout(t *testing.T) {
 		Size:        1000,
 	}
 
-	_, err := DownloadAsset(context.Background(), asset, "", nil)
+	dummySHA := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	_, err := DownloadAsset(context.Background(), asset, dummySHA, nil)
 	if err == nil {
 		t.Fatal("expected stall timeout error, got nil")
 	}

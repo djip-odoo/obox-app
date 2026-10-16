@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"syscall"
 
 	"obox-app/internal/logger"
@@ -93,14 +94,16 @@ func applyToExecutable(parentPID int, exePath, stagedPath string) error {
 
 	logger.Infof("Successfully replaced binary at %s with staged update", exePath)
 
-	// 4. Relaunch the updated executable in a detached session
-	cmd := exec.Command(exePath)
+	// 4. Relaunch the updated executable in a detached session once the current instance exits
+	// This ensures SingleInstanceLock, file locks, and listening ports are fully released.
+	script := `while kill -0 "$1" 2>/dev/null; do sleep 0.1; done; exec "$2"`
+	cmd := exec.Command("sh", "-c", script, "sh", strconv.Itoa(parentPID), exePath)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	if err := cmd.Start(); err != nil {
 		logger.Warnf("Failed to relaunch application automatically: %v", err)
 	} else {
 		_ = cmd.Process.Release()
-		logger.Infof("Relaunched updated application (new PID: %d)", cmd.Process.Pid)
+		logger.Infof("Scheduled updated application relaunch once current process (%d) exits", parentPID)
 	}
 
 	return nil

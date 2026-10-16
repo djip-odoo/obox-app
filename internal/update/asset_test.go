@@ -1,6 +1,7 @@
 package update
 
 import (
+	"context"
 	"runtime"
 	"strings"
 	"testing"
@@ -21,6 +22,7 @@ func TestSelectAsset_MatchingPlatform(t *testing.T) {
 
 	assets := []Asset{
 		{Name: "other-unknown-file", DownloadURL: "https://github.com/test/other"},
+		{Name: currentAssetName + ".sha256", DownloadURL: "https://github.com/test/current-sha"},
 		{Name: currentAssetName, DownloadURL: "https://github.com/test/current"},
 		{Name: "SHA256SUMS", DownloadURL: "https://github.com/test/sums"},
 	}
@@ -76,6 +78,8 @@ func TestValidateDownloadURL(t *testing.T) {
 		"https://github.com/djip-odoo/obox-app/releases/download/v1.0.17/obox-app-linux64-v1.0.17",
 		"https://api.github.com/repos/djip-odoo/obox-app/releases/assets/123",
 		"https://raw.github.com/test",
+		"https://objects.githubusercontent.com/github-production-release-asset-2e65be/123",
+		"https://github-releases.githubusercontent.com/123/456",
 	}
 	for _, u := range valid {
 		if err := ValidateDownloadURL(u); err != nil {
@@ -86,11 +90,11 @@ func TestValidateDownloadURL(t *testing.T) {
 	invalid := []string{
 		"https://evil.com/malware.exe",
 		"https://github.com.attacker.com/malware.exe",
+		"https://githubusercontent.com.attacker.com/malware.exe",
 		"ftp://github.com/test",
 		"http://github.com/insecure",
 		"http://127.0.0.1:45455/pkg.bin",
 		"http://localhost:8080/pkg.bin",
-		"https://objects.githubusercontent.com/github-production-release-asset-2e65be/123",
 	}
 	for _, u := range invalid {
 		if err := ValidateDownloadURL(u); err == nil {
@@ -105,7 +109,7 @@ func TestFetchExpectedChecksum_Digest(t *testing.T) {
 		Digest: "sha256:70e3d6e17c9f8843bec55923f5743081b4963ea6e0fcf8f051bfdbc8d2ed5418",
 	}
 
-	sha, err := FetchExpectedChecksum(asset, nil)
+	sha, err := FetchExpectedChecksum(context.Background(), asset, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -113,5 +117,18 @@ func TestFetchExpectedChecksum_Digest(t *testing.T) {
 	expected := "70e3d6e17c9f8843bec55923f5743081b4963ea6e0fcf8f051bfdbc8d2ed5418"
 	if sha != expected {
 		t.Errorf("got %q, want %q", sha, expected)
+	}
+}
+
+func TestSelectAsset_Architecture(t *testing.T) {
+	// Incompatible arch should be rejected
+	if runtime.GOARCH == "amd64" {
+		if isAssetMatch("obox-app-linux-arm64-1.0.0") {
+			t.Error("expected isAssetMatch to reject arm64 on amd64")
+		}
+	} else if runtime.GOARCH == "arm64" {
+		if isAssetMatch("obox-app-linux-amd64-1.0.0") {
+			t.Error("expected isAssetMatch to reject amd64 on arm64")
+		}
 	}
 }

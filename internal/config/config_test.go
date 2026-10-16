@@ -275,7 +275,7 @@ func TestManager_DebugMode(t *testing.T) {
 	testutil.ExpectedFalse(t, cm.IsDebugMode())
 	testutil.ExpectedNil(t, cm.DebugModeExpiresAt())
 
-	err := cm.SetDebugMode(true)
+	err := cm.ToggleDebugMode()
 	testutil.ExpectedNoError(t, err)
 	testutil.ExpectedTrue(t, cm.IsDebugMode())
 
@@ -310,7 +310,7 @@ func TestManager_DebugMode(t *testing.T) {
 	testutil.ExpectedFalse(t, cmExpiredReloaded.IsDebugMode())
 
 	// Test disabling manually
-	err = cm.SetDebugMode(false)
+	err = cm.ToggleDebugMode()
 	testutil.ExpectedNoError(t, err)
 	testutil.ExpectedFalse(t, cm.IsDebugMode())
 	testutil.ExpectedNil(t, cm.DebugModeExpiresAt())

@@ -632,14 +632,14 @@ func TestApp_DebugModeEnabled(t *testing.T) {
 	testutil.ExpectedFalse(t, logger.IsDebugMode())
 
 	// Enable debug mode via App
-	err = app.SetSupportModeEnabled(true)
+	err = app.ToggleSupportMode()
 	testutil.ExpectedNoError(t, err)
 	testutil.ExpectedTrue(t, cfg.IsDebugMode())
 	testutil.ExpectedTrue(t, logger.IsDebugMode())
 	testutil.ExpectedTrue(t, app.AppVariable().Settings.DebugMode)
 
 	// Disable debug mode via App
-	err = app.SetSupportModeEnabled(false)
+	err = app.ToggleSupportMode()
 	testutil.ExpectedNoError(t, err)
 	testutil.ExpectedFalse(t, cfg.IsDebugMode())
 	testutil.ExpectedFalse(t, logger.IsDebugMode())

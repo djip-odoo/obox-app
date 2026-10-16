@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"sync/atomic"
 	"time"
 
 	"obox-app/buildinfo"
@@ -67,7 +68,7 @@ type App struct {
 	autoStart      *autostart.App
 	dialogs        dialoger
 	events         emitter
-	restart        bool
+	restart        atomic.Bool
 }
 
 // showError surfaces an error to the user and logs any failure to do so.
@@ -137,6 +138,7 @@ func NewApp() *App {
 	}
 	logger.Debugf("Config loaded from %s", cfg.Path())
 	a.config = cfg
+	logger.SetDebugMode(cfg.IsDebugMode())
 
 	return a
 }
@@ -144,6 +146,7 @@ func NewApp() *App {
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	logger.Debugf("Application startup")
+	update.CleanupStaleUpdates()
 
 	port, err := a.config.ResolvePort()
 	if err != nil {
@@ -175,6 +178,8 @@ func (a *App) notifyAppVariablesChanged() {
 }
 
 func (a *App) AppVariable() AppVariable {
+	debugMode := a.config.IsDebugMode()
+	logger.SetDebugMode(debugMode)
 	networkEnabled := a.config.IsNetworkPrintingEnabled()
 	hostname, _ := os.Hostname()
 	return AppVariable{
@@ -199,7 +204,7 @@ func (a *App) AppVariable() AppVariable {
 		Settings: Settings{
 			AutoStart:              a.autoStart.IsEnabled(),
 			NetworkPrintingEnabled: networkEnabled,
-			DebugMode:              a.config.IsDebugMode(),
+			DebugMode:              debugMode,
 		},
 	}
 }
@@ -393,6 +398,10 @@ func (a *App) GetTroubleshootInfo() TroubleshootInfo {
 }
 
 func (a *App) confirmQuit() bool {
+	if a.restart.Load() {
+		return true
+	}
+
 	result, err := a.dialogs.Message(a.ctx, wailsruntime.MessageDialogOptions{
 		Type:          wailsruntime.QuestionDialog,
 		Title:         "Quit Obox App",
@@ -431,11 +440,11 @@ func (a *App) CheckForUpdate() update.Info {
 	return info
 }
 
-func (a *App) SetSupportModeEnabled(enabled bool) error {
-	logger.SetDebugMode(enabled)
-	if err := a.config.SetDebugMode(enabled); err != nil {
+func (a *App) ToggleSupportMode() error {
+	if err := a.config.ToggleDebugMode(); err != nil {
 		return err
 	}
+	logger.SetDebugMode(a.config.IsDebugMode())
 	a.notifyAppVariablesChanged()
 	return nil
 }
@@ -474,23 +483,17 @@ func (a *App) DownloadUpdate() (string, error) {
 
 func (a *App) ApplyUpdate() error {
 	u := update.GetUpdaterInstance()
-	a.restart = true
-
-	// Stop background services and release locks before applying
-	wasRunning := a.webserver != nil && a.webserver.Running()
-	if wasRunning {
-		_ = a.webserver.Stop()
-	}
+	a.restart.Store(true)
 
 	if err := u.Apply(); err != nil {
-		a.restart = false
-		if wasRunning && a.config != nil {
-			if port, portErr := a.config.ResolvePort(); portErr == nil {
-				a.webserver = server.New(port, a.printerManager, a.obox)
-			}
-		}
+		a.restart.Store(false)
 		logger.Errorf("Failed to apply update: %v", err)
 		return err
+	}
+
+	// Stop background services and release locks before quitting
+	if a.webserver != nil && a.webserver.Running() {
+		_ = a.webserver.Stop()
 	}
 
 	if a.ctx != nil {
@@ -501,5 +504,6 @@ func (a *App) ApplyUpdate() error {
 
 // CancelUpdate aborts an in-progress update download and resets updater state to idle.
 func (a *App) CancelUpdate() {
+	a.restart.Store(false)
 	update.GetUpdaterInstance().Reset()
 }

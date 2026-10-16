@@ -2,6 +2,7 @@ package update
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"io"
 	"net/url"
@@ -27,6 +28,9 @@ func selectAsset(assets []Asset) (*Asset, error) {
 
 func isAssetMatch(filename string) bool {
 	lower := strings.ToLower(filename)
+	if strings.HasSuffix(lower, ".sha256") || strings.HasSuffix(lower, ".sha256sums") || strings.HasSuffix(lower, ".txt") || strings.HasSuffix(lower, ".sig") {
+		return false
+	}
 
 	switch runtime.GOOS {
 	case "linux":
@@ -76,7 +80,7 @@ func parseChecksums(r io.Reader) (map[string]string, error) {
 // FetchExpectedChecksum tries to get the expected SHA-256 for targetAsset:
 // 1. Directly from the asset's "digest" field returned by the GitHub Release API (e.g. "sha256:...").
 // 2. Otherwise downloads and parses any checksum asset in the release (e.g. SHA256SUMS).
-func FetchExpectedChecksum(targetAsset *Asset, allAssets []Asset) (string, error) {
+func FetchExpectedChecksum(ctx context.Context, targetAsset *Asset, allAssets []Asset) (string, error) {
 	if sha := extractSHA256(targetAsset.Digest); sha != "" {
 		return sha, nil
 	}
@@ -86,7 +90,7 @@ func FetchExpectedChecksum(targetAsset *Asset, allAssets []Asset) (string, error
 		return "", nil // No checksum file published
 	}
 
-	sums, err := FetchChecksumFile(csAsset.DownloadURL)
+	sums, err := FetchChecksumFile(ctx, csAsset.DownloadURL)
 	if err != nil {
 		return "", err
 	}
@@ -110,7 +114,7 @@ func extractSHA256(digest string) string {
 	return ""
 }
 
-var allowedHosts = []string{"github.com", "api.github.com"}
+var allowedHosts = []string{"github.com", "api.github.com", "githubusercontent.com"}
 
 // ValidateDownloadURL verifies that the asset download URL points to a trusted GitHub domain.
 func ValidateDownloadURL(rawURL string) error {

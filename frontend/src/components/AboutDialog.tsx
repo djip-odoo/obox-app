@@ -266,8 +266,14 @@ export default function AboutDialog() {
             <div key="installing" className="animate-fade-in bg-gray-50/90 border border-gray-200/80 rounded-xl p-3.5 text-xs flex items-center gap-3 text-gray-700 shadow-2xs">
               <div className="w-5 h-5 border-2 border-odoo border-t-transparent rounded-full animate-spin shrink-0" />
               <div className="min-w-0">
-                <p className="font-semibold text-gray-800 leading-tight">Installing update & restarting…</p>
-                <p className="text-[11px] text-gray-500 mt-0.5">The application will automatically restart once finished.</p>
+                <p className="font-semibold text-gray-800 leading-tight">
+                  {os === "windows" ? "Installing update…" : "Installing update & restarting…"}
+                </p>
+                <p className="text-[11px] text-gray-500 mt-0.5">
+                  {os === "windows"
+                    ? "The application will close to run the installer. Please leave 'Run Obox App' checked to restart once finished."
+                    : "The application will automatically restart once finished."}
+                </p>
               </div>
             </div>
           )}

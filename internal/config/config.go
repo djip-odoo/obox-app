@@ -166,16 +166,18 @@ func (cm *Manager) IsNetworkPrintingEnabled() bool {
 	return cm.Data.NetworkPrinting
 }
 
-func (cm *Manager) SetDebugMode(enabled bool) error {
+func (cm *Manager) ToggleDebugMode() error {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
-	cm.Data.DebugMode = enabled
+
+	enabled := !cm.Data.DebugMode
 	if enabled {
 		exp := time.Now().Add(DebugModeDuration)
 		cm.Data.DebugModeExpiresAt = &exp
 	} else {
 		cm.Data.DebugModeExpiresAt = nil
 	}
+	cm.Data.DebugMode = enabled
 	return cm.saveLocked()
 }
 

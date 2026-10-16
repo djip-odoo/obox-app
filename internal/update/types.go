@@ -4,24 +4,18 @@ const (
 	RepoOwner = "djip-odoo"
 	RepoName  = "obox-app"
 
-	assetNameLinux   = "obox-app-linux64"
-	assetNameWindows = "obox-app-win64-installer"
-	assetNameMacos   = "obox-app-macos"
+	assetNameLinux   = "obox-app-linux-amd64"
+	assetNameWindows = "obox-app-windows-amd64"
+	assetNameMacos   = "obox-app-darwin-arm64"
 
 	requestUA = "obox-app-updater"
 )
 
-// Version is injected at build time via -ldflags.
-var Version = "dev"
-
 var (
 	getAPIBaseURL  = func() string { return "https://api.github.com" }
 	getFeedBaseURL = func() string { return "https://github.com" }
-	// getAPIBaseURL  = func() string { return "https://test.com" }
-	// getFeedBaseURL = func() string { return "https://test.com" }
 )
 
-// State represents the current lifecycle state of the updater.
 type State string
 
 const (

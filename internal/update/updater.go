@@ -2,7 +2,10 @@ package update
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -24,6 +27,7 @@ type Updater struct {
 	latestRelease  *Release
 	selectedAsset  *Asset
 	stagedPath     string
+	stagedDir      string
 	cancelDownload context.CancelFunc
 }
 
@@ -120,16 +124,16 @@ func Check(ctx context.Context) (Info, error) {
 	return u.lastestInfo, nil
 }
 
-// Download downloads and verifies the update asset.
 func Download(ctx context.Context, progress ProgressFunc) (string, error) {
 	u := GetUpdaterInstance()
 	u.mu.Lock()
 
 	if u.lastestInfo.State.IsInProgress() {
+		u.mu.Unlock()
 		return "", ErrUpdateInProgress
 	}
 
-	if u.selectedAsset == nil || u.latestRelease == nil {
+	if u.selectedAsset == nil || u.latestRelease == nil || u.lastestInfo.State != StateUpdateAvailable {
 		u.mu.Unlock()
 		return "", ErrUpdateNotReady
 	}
@@ -143,24 +147,38 @@ func Download(ctx context.Context, progress ProgressFunc) (string, error) {
 	u.lastestInfo.State = StateDownloading
 	u.mu.Unlock()
 
+	defer func() {
+		cancel()
+		u.mu.Lock()
+		u.cancelDownload = nil
+		u.mu.Unlock()
+	}()
+
 	// Validate download URL
 	if err := ValidateDownloadURL(asset.DownloadURL); err != nil {
 		u.mu.Lock()
-		u.lastestInfo.State = StateFailed
+		u.lastestInfo.State = StateUpdateAvailable
 		u.lastestInfo.Error = err.Error()
 		u.mu.Unlock()
 		return "", err
 	}
 
-	// Fetch expected checksum if available
-	expectedSHA, err := FetchExpectedChecksum(asset, rel.Assets)
-	if err != nil {
+	// Fetch expected checksum before downloading - fail early if missing
+	expectedSHA, err := FetchExpectedChecksum(downloadCtx, asset, rel.Assets)
+	if err != nil || expectedSHA == "" {
 		u.mu.Lock()
-		u.lastestInfo.State = StateFailed
-		u.lastestInfo.Error = err.Error()
+		u.lastestInfo.State = StateUpdateAvailable
+		if err != nil {
+			u.lastestInfo.Error = err.Error()
+		} else {
+			u.lastestInfo.Error = fmt.Sprintf("no checksum available for asset %s", asset.Name)
+		}
 		u.mu.Unlock()
-		logger.Warnf("Could not fetch release checksums: %v", err)
-		return "", fmt.Errorf("failed to fetch release checksums: %v", err)
+		if err != nil {
+			logger.Warnf("Could not fetch release checksums: %v", err)
+			return "", fmt.Errorf("failed to fetch release checksums: %v", err)
+		}
+		return "", fmt.Errorf("no checksum available for asset %s", asset.Name)
 	}
 
 	result, err := DownloadAsset(downloadCtx, asset, expectedSHA, progress)
@@ -168,15 +186,18 @@ func Download(ctx context.Context, progress ProgressFunc) (string, error) {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 
-	u.cancelDownload = nil
-
 	if err != nil {
-		u.lastestInfo.State = StateFailed
+		u.lastestInfo.State = StateUpdateAvailable
+		if errors.Is(err, context.Canceled) {
+			u.lastestInfo.Error = ""
+			return "", err
+		}
 		u.lastestInfo.Error = err.Error()
 		return "", err
 	}
 
 	u.stagedPath = result.StagedPath
+	u.stagedDir = result.TempDir
 	u.lastestInfo.State = StateUpdateAvailable
 	u.lastestInfo.Error = ""
 	return result.StagedPath, nil
@@ -195,6 +216,7 @@ func (u *Updater) Apply() error {
 	}
 
 	staged := u.stagedPath
+	stagedDir := u.stagedDir
 	u.lastestInfo.State = StateInstalling
 	u.mu.Unlock()
 
@@ -203,6 +225,14 @@ func (u *Updater) Apply() error {
 		u.mu.Lock()
 		u.lastestInfo.State = StateFailed
 		u.lastestInfo.Error = err.Error()
+		// Only remove staged files if the staged file no longer exists or is corrupted.
+		// On Windows, if user cancels the UAC prompt or an installer launch fails temporarily,
+		// keep stagedDir so the update doesn't have to be re-downloaded.
+		if _, statErr := os.Stat(staged); statErr != nil && stagedDir != "" {
+			_ = os.RemoveAll(stagedDir)
+			u.stagedDir = ""
+			u.stagedPath = ""
+		}
 		u.mu.Unlock()
 		return fmt.Errorf("%w: %v", ErrInstallFailed, err)
 	}
@@ -217,7 +247,7 @@ func (u *Updater) Status() Info {
 	return u.lastestInfo
 }
 
-// Reset returns the updater to StateIdle.
+// Reset returns the updater to StateIdle or StateUpdateAvailable if an update is available.
 func (u *Updater) Reset() {
 	u.mu.Lock()
 	defer u.mu.Unlock()
@@ -225,8 +255,29 @@ func (u *Updater) Reset() {
 		u.cancelDownload()
 		u.cancelDownload = nil
 	}
-	u.lastestInfo.State = StateIdle
+	if u.stagedDir != "" {
+		_ = os.RemoveAll(u.stagedDir)
+		u.stagedDir = ""
+		u.stagedPath = ""
+	}
+	if u.selectedAsset != nil {
+		u.lastestInfo.State = StateUpdateAvailable
+	} else {
+		u.lastestInfo.State = StateIdle
+	}
 	u.lastestInfo.Error = ""
+	u.lastCheckTime = time.Time{}
+}
+
+// CleanupStaleUpdates removes any leftover temporary directories from previous update downloads.
+func CleanupStaleUpdates() {
+	pattern := filepath.Join(os.TempDir(), "obox-app-update-*")
+	matches, err := filepath.Glob(pattern)
+	if err == nil {
+		for _, m := range matches {
+			_ = os.RemoveAll(m)
+		}
+	}
 }
 
 func sanitizeNotes(notes string, maxRunes int) string {

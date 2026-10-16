@@ -9,10 +9,22 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
 )
+
+func getTestPlatformAssetName() string {
+	switch runtime.GOOS {
+	case "windows":
+		return assetNameWindows + "-1.2.0.exe"
+	case "darwin":
+		return assetNameMacos + "-1.2.0"
+	default:
+		return assetNameLinux + "-1.2.0"
+	}
+}
 
 func TestUpdater_Lifecycle(t *testing.T) {
 	binaryPayload := []byte("new-version-payload")
@@ -31,14 +43,14 @@ func TestUpdater_Lifecycle(t *testing.T) {
 				"prerelease": false,
 				"assets": [
 					{
-						"name": "obox-app-linux64",
+						"name": "%s",
 						"size": %d,
-						"browser_download_url": "%s/download/linux64",
+						"browser_download_url": "%s/download/pkg",
 						"digest": "sha256:%s"
 					}
 				]
-			}`, len(binaryPayload), "https://"+r.Host, binaryHash)
-		case "/download/linux64":
+			}`, getTestPlatformAssetName(), len(binaryPayload), "https://"+r.Host, binaryHash)
+		case "/download/pkg":
 			w.Header().Set("Content-Length", fmt.Sprint(len(binaryPayload)))
 			_, _ = w.Write(binaryPayload)
 		default:
@@ -52,14 +64,15 @@ func TestUpdater_Lifecycle(t *testing.T) {
 	defer func() { allowedHosts = oldHosts }()
 
 	u := GetUpdaterInstance()
-	u.Reset()
 	u.mu.Lock()
-	u.lastestInfo.CurrentVersion = "1.1.0"
 	u.selectedAsset = nil
 	u.latestRelease = nil
 	u.stagedPath = ""
 	u.lastCheckTime = time.Time{}
+	u.lastestInfo.CurrentVersion = "1.1.0"
+	u.lastestInfo.State = StateIdle
 	u.mu.Unlock()
+	u.Reset()
 
 	oldAPI := getAPIBaseURL
 	getAPIBaseURL = func() string { return server.URL }
@@ -127,7 +140,7 @@ func TestUpdater_ConcurrencyProtection(t *testing.T) {
 		// Slow response
 		time.Sleep(100 * time.Millisecond)
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"tag_name": "1.2.0", "draft": false, "prerelease": false, "assets": [{"name": "obox-app-linux64", "browser_download_url": "http://127.0.0.1/download/linux64"}]}`))
+		_, _ = fmt.Fprintf(w, `{"tag_name": "1.2.0", "draft": false, "prerelease": false, "assets": [{"name": "%s", "browser_download_url": "http://127.0.0.1/download"}]}`, getTestPlatformAssetName())
 	}))
 	defer server.Close()
 
@@ -171,4 +184,50 @@ func TestUpdater_ConcurrencyProtection(t *testing.T) {
 	if err2 != nil && !errors.Is(err2, ErrUpdateInProgress) {
 		t.Errorf("unexpected error on concurrent check 2: %v", err2)
 	}
+}
+
+func TestUpdater_RetryAfterFailureAndCancel(t *testing.T) {
+	u := GetUpdaterInstance()
+	u.Reset()
+	u.mu.Lock()
+	u.lastestInfo.CurrentVersion = "1.0.0"
+	u.selectedAsset = &Asset{
+		Name:        getTestPlatformAssetName(),
+		DownloadURL: "https://invalid-host-untrusted.example.com/asset",
+	}
+	u.latestRelease = &Release{
+		TagName: "1.1.0",
+	}
+	u.lastestInfo.State = StateUpdateAvailable
+	u.mu.Unlock()
+
+	// Download should fail because of untrusted host
+	_, err := Download(context.Background(), nil)
+	if err == nil {
+		t.Fatal("expected download failure, got nil")
+	}
+
+	// State should remain StateUpdateAvailable with error set, enabling user to retry
+	status := u.Status()
+	if status.State != StateUpdateAvailable {
+		t.Fatalf("expected state %s after failure, got %s", StateUpdateAvailable, status.State)
+	}
+	if status.Error == "" {
+		t.Fatal("expected non-empty error after download failure")
+	}
+
+	// Test Reset / Cancel behavior
+	u.Reset()
+	statusAfterReset := u.Status()
+	if statusAfterReset.State != StateUpdateAvailable {
+		t.Fatalf("expected state %s after reset with selected asset, got %s", StateUpdateAvailable, statusAfterReset.State)
+	}
+	if statusAfterReset.Error != "" {
+		t.Fatalf("expected error cleared after reset, got %q", statusAfterReset.Error)
+	}
+	u.mu.Lock()
+	if !u.lastCheckTime.IsZero() {
+		t.Errorf("expected lastCheckTime to be reset, got %v", u.lastCheckTime)
+	}
+	u.mu.Unlock()
 }

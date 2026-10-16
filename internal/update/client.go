@@ -16,7 +16,15 @@ const (
 	maxJSONResponse   = 2 * 1024 * 1024 // 2 MB limit for API responses
 )
 
-var client = &http.Client{Timeout: defaultAPITimeout}
+var client = &http.Client{
+	Timeout: defaultAPITimeout,
+	CheckRedirect: func(req *http.Request, via []*http.Request) error {
+		if len(via) >= 10 {
+			return fmt.Errorf("stopped after 10 redirects")
+		}
+		return ValidateDownloadURL(req.URL.String())
+	},
+}
 
 func FetchLatestRelease(ctx context.Context) (*Release, error) {
 	url := fmt.Sprintf("%s/repos/%s/%s/releases/latest", strings.TrimRight(getAPIBaseURL(), "/"), RepoOwner, RepoName)
@@ -73,8 +81,11 @@ func FetchLatestRelease(ctx context.Context) (*Release, error) {
 }
 
 // FetchChecksumFile downloads and parses a checksum file from the given URL.
-func FetchChecksumFile(downloadURL string) (map[string]string, error) {
-	req, err := http.NewRequest(http.MethodGet, downloadURL, nil)
+func FetchChecksumFile(ctx context.Context, downloadURL string) (map[string]string, error) {
+	if err := ValidateDownloadURL(downloadURL); err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
 	if err != nil {
 		return nil, err
 	}
