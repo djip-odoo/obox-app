@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -69,6 +70,8 @@ type App struct {
 	dialogs        dialoger
 	events         emitter
 	restart        atomic.Bool
+	debugTimer     *time.Timer
+	debugTimerMu   sync.Mutex
 }
 
 // showError surfaces an error to the user and logs any failure to do so.
@@ -139,14 +142,45 @@ func NewApp() *App {
 	logger.Debugf("Config loaded from %s", cfg.Path())
 	a.config = cfg
 	logger.SetDebugMode(cfg.IsDebugMode())
+	a.scheduleDebugExpiryTimer()
 
 	return a
+}
+
+func (a *App) scheduleDebugExpiryTimer() {
+	a.debugTimerMu.Lock()
+	defer a.debugTimerMu.Unlock()
+
+	if a.debugTimer != nil {
+		a.debugTimer.Stop()
+		a.debugTimer = nil
+	}
+
+	exp := a.config.DebugModeExpiresAt()
+	if exp == nil {
+		return
+	}
+
+	d := time.Until(*exp)
+	if d <= 0 {
+		a.config.IsDebugMode()
+		logger.SetDebugMode(false)
+		a.notifyAppVariablesChanged()
+		return
+	}
+
+	a.debugTimer = time.AfterFunc(d, func() {
+		a.config.IsDebugMode()
+		logger.SetDebugMode(false)
+		a.notifyAppVariablesChanged()
+	})
 }
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	logger.Debugf("Application startup")
 	update.CleanupStaleUpdates()
+	a.scheduleDebugExpiryTimer()
 
 	port, err := a.config.ResolvePort()
 	if err != nil {
@@ -164,6 +198,13 @@ func (a *App) startup(ctx context.Context) {
 func (a *App) shutdown(ctx context.Context) {
 	logger.Infof("Stopping Obox App server")
 
+	a.debugTimerMu.Lock()
+	if a.debugTimer != nil {
+		a.debugTimer.Stop()
+		a.debugTimer = nil
+	}
+	a.debugTimerMu.Unlock()
+
 	if a.obox != nil {
 		a.obox.Stop()
 	}
@@ -174,12 +215,13 @@ func (a *App) shutdown(ctx context.Context) {
 }
 
 func (a *App) notifyAppVariablesChanged() {
-	a.events.Emit(a.ctx, "app:variables_changed", a.AppVariable())
+	if a.ctx != nil {
+		a.events.Emit(a.ctx, "app:variables_changed", a.AppVariable())
+	}
 }
 
 func (a *App) AppVariable() AppVariable {
 	debugMode := a.config.IsDebugMode()
-	logger.SetDebugMode(debugMode)
 	networkEnabled := a.config.IsNetworkPrintingEnabled()
 	hostname, _ := os.Hostname()
 	return AppVariable{
@@ -440,13 +482,18 @@ func (a *App) CheckForUpdate() update.Info {
 	return info
 }
 
-func (a *App) ToggleSupportMode() error {
-	if err := a.config.ToggleDebugMode(); err != nil {
+func (a *App) SetSupportModeEnabled(enabled bool) error {
+	if err := a.config.SetDebugMode(enabled); err != nil {
 		return err
 	}
 	logger.SetDebugMode(a.config.IsDebugMode())
+	a.scheduleDebugExpiryTimer()
 	a.notifyAppVariablesChanged()
 	return nil
+}
+
+func (a *App) ToggleSupportMode() error {
+	return a.SetSupportModeEnabled(!a.config.IsDebugMode())
 }
 
 func (a *App) DownloadUpdate() (string, error) {

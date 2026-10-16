@@ -98,6 +98,8 @@ func applyToExecutable(parentPID int, exePath, stagedPath string) error {
 	// This ensures SingleInstanceLock, file locks, and listening ports are fully released.
 	script := `while kill -0 "$1" 2>/dev/null; do sleep 0.1; done; exec "$2"`
 	cmd := exec.Command("sh", "-c", script, "sh", strconv.Itoa(parentPID), exePath)
+	cmd.Dir = exeDir
+	cmd.Env = os.Environ()
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	if err := cmd.Start(); err != nil {
 		logger.Warnf("Failed to relaunch application automatically: %v", err)

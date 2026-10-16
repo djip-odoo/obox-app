@@ -72,6 +72,16 @@ func TestDebugMode(t *testing.T) {
 	testutil.ExpectedFalse(t, IsDebugMode())
 	testutil.ExpectedEqual(t, log.GetLevel(), logrus.InfoLevel)
 
+	// Call again with the same value (false -> false) to test early return
+	SetDebugMode(false)
+	testutil.ExpectedFalse(t, IsDebugMode())
+	testutil.ExpectedEqual(t, log.GetLevel(), logrus.InfoLevel)
+
+	SetDebugMode(true)
+	testutil.ExpectedTrue(t, IsDebugMode())
+	testutil.ExpectedEqual(t, log.GetLevel(), logrus.DebugLevel)
+
+	// Call again with the same value (true -> true) to test early return
 	SetDebugMode(true)
 	testutil.ExpectedTrue(t, IsDebugMode())
 	testutil.ExpectedEqual(t, log.GetLevel(), logrus.DebugLevel)

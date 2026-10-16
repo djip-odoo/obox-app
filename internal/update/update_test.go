@@ -32,7 +32,7 @@ func sampleReleaseFeedJSON() string {
     {
       "name": "%s",
       "size": 123,
-      "browser_download_url": "http://127.0.0.1/download"
+      "browser_download_url": "https://github.com/djip-odoo/obox-app/releases/download/v1.0.5/download"
     }
   ]
 }`, name)

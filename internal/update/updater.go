@@ -196,6 +196,16 @@ func Download(ctx context.Context, progress ProgressFunc) (string, error) {
 		return "", err
 	}
 
+	// Check if context was cancelled while DownloadAsset was completing
+	if downloadCtx.Err() != nil {
+		if result != nil && result.TempDir != "" {
+			_ = os.RemoveAll(result.TempDir)
+		}
+		u.lastestInfo.State = StateUpdateAvailable
+		u.lastestInfo.Error = ""
+		return "", downloadCtx.Err()
+	}
+
 	u.stagedPath = result.StagedPath
 	u.stagedDir = result.TempDir
 	u.lastestInfo.State = StateUpdateAvailable
@@ -255,6 +265,10 @@ func (u *Updater) Reset() {
 		u.cancelDownload()
 		u.cancelDownload = nil
 	}
+	// Never delete the staged update directory or disrupt state while installation is in progress.
+	if u.lastestInfo.State == StateInstalling {
+		return
+	}
 	if u.stagedDir != "" {
 		_ = os.RemoveAll(u.stagedDir)
 		u.stagedDir = ""
@@ -269,13 +283,20 @@ func (u *Updater) Reset() {
 	u.lastCheckTime = time.Time{}
 }
 
-// CleanupStaleUpdates removes any leftover temporary directories from previous update downloads.
+const defaultStaleUpdateAge = 15 * time.Minute
+
+// CleanupStaleUpdates removes any leftover temporary directories from previous update downloads
+// that are older than defaultStaleUpdateAge (avoiding active downloads from other instances).
 func CleanupStaleUpdates() {
 	pattern := filepath.Join(os.TempDir(), "obox-app-update-*")
 	matches, err := filepath.Glob(pattern)
 	if err == nil {
+		cutoff := time.Now().Add(-defaultStaleUpdateAge)
 		for _, m := range matches {
-			_ = os.RemoveAll(m)
+			info, err := os.Stat(m)
+			if err == nil && info.IsDir() && info.ModTime().Before(cutoff) {
+				_ = os.RemoveAll(m)
+			}
 		}
 	}
 }

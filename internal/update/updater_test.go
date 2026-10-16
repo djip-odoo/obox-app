@@ -140,7 +140,7 @@ func TestUpdater_ConcurrencyProtection(t *testing.T) {
 		// Slow response
 		time.Sleep(100 * time.Millisecond)
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = fmt.Fprintf(w, `{"tag_name": "1.2.0", "draft": false, "prerelease": false, "assets": [{"name": "%s", "browser_download_url": "http://127.0.0.1/download"}]}`, getTestPlatformAssetName())
+		_, _ = fmt.Fprintf(w, `{"tag_name": "1.2.0", "draft": false, "prerelease": false, "assets": [{"name": "%s", "browser_download_url": "https://github.com/djip-odoo/obox-app/releases/download/v1.2.0/download"}]}`, getTestPlatformAssetName())
 	}))
 	defer server.Close()
 
@@ -230,4 +230,132 @@ func TestUpdater_RetryAfterFailureAndCancel(t *testing.T) {
 		t.Errorf("expected lastCheckTime to be reset, got %v", u.lastCheckTime)
 	}
 	u.mu.Unlock()
+}
+
+func TestUpdater_CancelMidDownload(t *testing.T) {
+	downloadStarted := make(chan struct{})
+	allowExit := make(chan struct{})
+
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/repos/djip-odoo/obox-app/releases/latest":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = fmt.Fprintf(w, `{
+				"tag_name": "1.3.0",
+				"draft": false,
+				"prerelease": false,
+				"assets": [
+					{
+						"name": "%s",
+						"size": 100000,
+						"browser_download_url": "%s/download/pkg",
+						"digest": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+					}
+				]
+			}`, getTestPlatformAssetName(), "https://"+r.Host)
+		case "/download/pkg":
+			w.Header().Set("Content-Length", "100000")
+			w.WriteHeader(http.StatusOK)
+			if f, ok := w.(http.Flusher); ok {
+				f.Flush()
+			}
+			close(downloadStarted)
+			// Wait until test signals to exit or client disconnects
+			select {
+			case <-allowExit:
+			case <-r.Context().Done():
+			}
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer func() {
+		close(allowExit)
+		server.Close()
+	}()
+
+	oldHosts := allowedHosts
+	allowedHosts = append(allowedHosts, "127.0.0.1")
+	defer func() { allowedHosts = oldHosts }()
+
+	oldClient := client
+	client = server.Client()
+	defer func() { client = oldClient }()
+
+	u := GetUpdaterInstance()
+	u.Reset()
+	u.mu.Lock()
+	u.selectedAsset = nil
+	u.latestRelease = nil
+	u.stagedPath = ""
+	u.lastCheckTime = time.Time{}
+	u.lastestInfo.CurrentVersion = "1.0.0"
+	u.lastestInfo.State = StateIdle
+	u.mu.Unlock()
+	u.Reset()
+
+	oldAPI := getAPIBaseURL
+	getAPIBaseURL = func() string { return server.URL }
+	defer func() { getAPIBaseURL = oldAPI }()
+
+	// 1. Check for update
+	info, err := Check(context.Background())
+	if err != nil {
+		t.Fatalf("Check failed: %v", err)
+	}
+	if info.State != StateUpdateAvailable {
+		t.Fatalf("expected update available, got: %+v", info)
+	}
+
+	// 2. Start download in a goroutine
+	done := make(chan error, 1)
+	go func() {
+		_, dlErr := Download(context.Background(), nil)
+		done <- dlErr
+	}()
+
+	// Wait for the server to receive the download request
+	select {
+	case <-downloadStarted:
+	case <-time.After(3 * time.Second):
+		t.Fatal("download did not start in time")
+	}
+
+	// Wait briefly for state to become StateDownloading
+	deadline := time.Now().Add(1 * time.Second)
+	for time.Now().Before(deadline) {
+		if u.Status().State == StateDownloading {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	// 3. Cancel mid-download via Reset()
+	u.Reset()
+
+	// 4. Download goroutine must terminate promptly with error
+	select {
+	case dlErr := <-done:
+		if dlErr == nil {
+			t.Fatal("expected download to fail upon cancellation, got nil")
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("download did not abort in time after Reset()")
+	}
+
+	// 5. State after Reset() should be StateUpdateAvailable, no error, and staged files cleared
+	finalStatus := u.Status()
+	if finalStatus.State != StateUpdateAvailable {
+		t.Errorf("expected state %s after Reset(), got %s", StateUpdateAvailable, finalStatus.State)
+	}
+	if finalStatus.Error != "" {
+		t.Errorf("expected error cleared after Reset(), got %q", finalStatus.Error)
+	}
+	u.mu.Lock()
+	stagedPath := u.stagedPath
+	stagedDir := u.stagedDir
+	u.mu.Unlock()
+	if stagedPath != "" || stagedDir != "" {
+		t.Errorf("staged files not cleared: path=%q dir=%q", stagedPath, stagedDir)
+	}
 }
