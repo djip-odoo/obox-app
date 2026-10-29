@@ -22,13 +22,11 @@ import { AppContext } from "./AppContext";
 
 // Matches backend State constants in github.com/wailsapp/wails/v3/pkg/updater
 export type UpdateState =
-  | "unconfigured"
   | "idle"
   | "checking"
   | "up-to-date"
   | "available"
   | "downloading"
-  | "verifying"
   | "installing"
   | "ready"
   | "error";
