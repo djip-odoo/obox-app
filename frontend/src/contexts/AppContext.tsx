@@ -2,7 +2,7 @@ import { createContext, useCallback, useEffect, useState } from "react";
 import * as main from "@bindings/obox-app/models";
 import * as buildinfo from "@bindings/obox-app/buildinfo/models";
 import { AppVariable } from "@bindings/obox-app/app";
-import { onEvent } from "../lib/wails";
+import { Events } from "@wailsio/runtime";
 
 const RETRY_INTERVAL = 5000;
 
@@ -65,9 +65,9 @@ export const AppContextWrapper = ({ children }: AppContextWrapper) => {
       }
     };
 
-    const unsubscribe = onEvent<main.AppVariable>("app:variables_changed", (variables) => {
-      if (variables) {
-        setApp(main.AppVariable.createFrom(variables));
+    const unsubscribe = Events.On("app:variables_changed", (ev) => {
+      if (ev.data) {
+        setApp(main.AppVariable.createFrom(ev.data));
       }
     });
 

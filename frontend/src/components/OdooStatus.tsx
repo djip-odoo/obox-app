@@ -15,7 +15,7 @@ import {
   LinkIcon,
 } from "../functions/icon";
 import { useClipboard } from "../hooks/useClipboard";
-import { openBrowser } from "../lib/wails";
+import { Browser } from "@wailsio/runtime";
 import Dialog from "./Dialog";
 
 function DisconnectButton({ onClick }: { onClick?: (e?: React.MouseEvent) => void; }) {
@@ -302,7 +302,7 @@ export default function OdooStatus() {
                 type="button"
                 onClick={() => {
                   if (odooData.status?.dbUrl) {
-                    openBrowser(odooData.status.dbUrl);
+                    Browser.OpenURL(odooData.status.dbUrl);
                   }
                 }}
                 title="Open in browser"

@@ -1,14 +1,13 @@
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { ToastContext } from "../contexts/ToastContext";
 import { errorText } from "../error";
-import { ClipboardSetText } from "../../wailsjs/runtime/runtime";
+import { Clipboard } from "@wailsio/runtime";
 
 async function writeTextToClipboard(text: string): Promise<void> {
   // 1. Wails native runtime clipboard (Linux WebKit2GTK, Windows WebView2, macOS WebKit)
   try {
-    const ok = await ClipboardSetText(text);
-    if (ok) return;
-    // Fall back if the native call reports failure.
+    await Clipboard.SetText(text);
+    return;
   } catch {
     // Fall back to browser clipboard APIs.
   }

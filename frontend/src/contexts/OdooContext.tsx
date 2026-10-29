@@ -4,7 +4,7 @@ import {
   ConfirmDisconnectOdoo,
   CheckOdooStatus,
 } from "@bindings/obox-app/app";
-import { onEvent } from "../lib/wails";
+import { Events } from "@wailsio/runtime";
 
 export type OdooContextType = {
   data: {
@@ -46,9 +46,8 @@ export const OdooContextWrapper = ({ children }: OdooContextWrapperProps) => {
   }, []);
 
   useEffect(() => {
-    // Listen to real-time status updates pushed from backend
-    const unsubscribe = onEvent<obox.ConnectionStatus>("odoo:status_changed", (newStatus) => {
-      setStatus(newStatus);
+    const unsubscribe = Events.On("odoo:status_changed", (ev) => {
+      setStatus(ev.data);
     });
 
     // Initial fetch on mount

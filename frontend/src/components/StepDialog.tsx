@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useClipboard } from "../hooks/useClipboard";
-import { openBrowser } from "../lib/wails";
+import { Browser } from "@wailsio/runtime";
 import type { Step } from "../types";
 import { useStepDialog } from "../hooks/useStepDialog";
 import { renderFormattedText } from "../functions/renderFormattedText";
@@ -186,7 +186,7 @@ export default function StepDialog({ steps, openButton, title, isLoading, onOpen
                   rel="noreferrer"
                   onClick={(event) => {
                     event.preventDefault();
-                    openBrowser(step.link!);
+                    Browser.OpenURL(step.link!);
                   }}
                   className="inline-flex items-center mt-3 px-3 py-2 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 hover:border-gray-400 text-sm transition font-medium"
                 >
