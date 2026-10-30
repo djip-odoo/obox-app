@@ -27,6 +27,7 @@ export type UpdateState =
   | "up-to-date"
   | "available"
   | "downloading"
+  | "verifying"
   | "installing"
   | "ready"
   | "error";

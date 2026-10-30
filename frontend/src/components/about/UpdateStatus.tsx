@@ -97,6 +97,24 @@ export default function UpdateStatus({ onDismiss }: UpdateStatusProps = {}) {
         </div>
       )}
 
+      {/* STATE: verifying */}
+      {info.state === "verifying" && (
+        <div
+          key="verifying"
+          className="animate-fade-in bg-linear-to-r from-purple-50/70 via-white to-purple-50/40 border border-odoo/25 rounded-2xl p-4 text-xs flex items-center gap-3.5 shadow-sm backdrop-blur-xs"
+        >
+          <div className="w-9 h-9 rounded-xl bg-odoo/10 text-odoo flex items-center justify-center shrink-0 border border-odoo/20 shadow-2xs">
+            <div className="w-4 h-4 border-2 border-odoo border-t-transparent rounded-full animate-spin" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="font-semibold text-gray-900 leading-tight">Verifying update…</p>
+            <p className="text-[11px] text-gray-600 mt-0.5 leading-relaxed">
+              Verifying checksum and file integrity.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* STATE: installing */}
       {info.state === "installing" && (
         <div
@@ -147,8 +165,8 @@ export default function UpdateStatus({ onDismiss }: UpdateStatusProps = {}) {
         </div>
       )}
 
-      {/* STATE: idle (Up to date) */}
-      {info.state === "idle" && (
+      {/* STATE: idle or up-to-date */}
+      {(info.state === "idle" || info.state === "up-to-date") && (
         <div
           key="idle"
           className="animate-fade-in bg-linear-to-r from-emerald-50/90 via-emerald-50/50 to-teal-50/30 border border-emerald-200/90 rounded-2xl p-4 text-xs flex items-center justify-between gap-3 text-emerald-950 shadow-2xs backdrop-blur-xs"
