@@ -89,10 +89,15 @@ func NewApp() *App {
 	logger.Debugf("Config loaded from %s", cfg.Path())
 	logger.SetDebugMode(cfg.IsDebugMode())
 
-	return &App{
-		updater: update.New(),
+	u := update.New()
+	app := &App{
+		updater: u,
 		config:  cfg,
 	}
+	u.SetStatusListener(func(info update.Info) {
+		app.notifyUpdateStatus(info)
+	})
+	return app
 }
 
 func (a *App) ServiceStartup(ctx context.Context, _ application.ServiceOptions) error {
@@ -419,20 +424,16 @@ func (a *App) DownloadUpdate() (string, error) {
 	staged, err := a.updater.Download(context.Background(), func(p updater.Progress) {
 		a.notifyUpdateProgress(p)
 	})
-	a.notifyUpdateStatus(a.updater.Info())
+
 	if err != nil {
 		logger.Errorf("Failed to download update: %v", err)
 		return "", err
 	}
 
-	go func() {
-		time.Sleep(5 * time.Second)
-		logger.Debugf("Applying update")
-		if err := a.ApplyUpdate(); err != nil {
-			logger.Errorf("Failed to auto-apply update: %v", err)
-			a.notifyUpdateStatus(a.updater.Info())
-		}
-	}()
+	if err := a.ApplyUpdate(); err != nil {
+		logger.Errorf("Failed to apply update: %v", err)
+		return "", err
+	}
 
 	return staged, nil
 }
@@ -443,11 +444,8 @@ func (a *App) ApplyUpdate() error {
 	if err := a.updater.Apply(); err != nil {
 		a.restart.Store(false)
 		logger.Errorf("Failed to apply update: %v", err)
-		a.notifyUpdateStatus(a.updater.Info())
 		return err
 	}
-
-	a.notifyUpdateStatus(a.updater.Info())
 
 	if update.PlatformNeedsQuitAfterApply() {
 		if a.webserver != nil && a.webserver.Running() {
@@ -473,5 +471,4 @@ func (a *App) ApplyUpdate() error {
 func (a *App) CancelUpdate() {
 	a.restart.Store(false)
 	a.updater.Reset()
-	a.notifyUpdateStatus(a.updater.Info())
 }
