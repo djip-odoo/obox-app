@@ -65,9 +65,8 @@ var client = &http.Client{
 
 func newGitHubProvider() (*github.Provider, error) {
 	return github.New(github.Config{
-		Repository:   RepoOwner + "/" + RepoName,
-		HTTPClient:   client,
-		AssetMatcher: customAssetMatcher,
+		Repository: RepoOwner + "/" + RepoName,
+		HTTPClient: client,
 	})
 }
 
