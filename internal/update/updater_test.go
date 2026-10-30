@@ -22,12 +22,12 @@ import (
 func getTestPlatformAssetName() string {
 	switch runtime.GOOS {
 	case "windows":
-		return "obox-app-windows-amd64.exe"
+		return "obox-app-windows-amd64-installer.exe"
 	case "linux":
 		if runtime.GOARCH == "arm64" {
-			return "obox-app-linux-arm64"
+			return "obox-app-linux-arm64.deb"
 		}
-		return "obox-app-linux-amd64"
+		return "obox-app-linux-amd64.deb"
 	case "darwin":
 		return "obox-app-darwin-amd64.pkg"
 	default:
