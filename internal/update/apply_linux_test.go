@@ -5,58 +5,76 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"obox-app/internal/testutil"
 )
 
-func TestApplyToExecutable_MissingFile(t *testing.T) {
-	tempDir := t.TempDir()
-	exe := filepath.Join(tempDir, "app")
-	_ = os.WriteFile(exe, []byte("echo current"), 0o755)
+func TestApply_MissingFile(t *testing.T) {
+	resetLinuxApplyState()
+	defer resetLinuxApplyState()
 
-	err := applyToExecutable(exe, filepath.Join(tempDir, "missing"))
+	nonExistent := filepath.Join(t.TempDir(), "nonexistent.deb")
+	err := applyStaged(nonExistent)
 	testutil.ExpectedError(t, err)
 	testutil.ExpectedTrue(t, errors.Is(err, ErrUpdateNotReady))
 }
 
-func TestApplyToExecutable_EmptyFile(t *testing.T) {
-	tempDir := t.TempDir()
-	exe := filepath.Join(tempDir, "app")
-	_ = os.WriteFile(exe, []byte("echo current"), 0o755)
-	emptyStaged := filepath.Join(tempDir, "empty")
-	_ = os.WriteFile(emptyStaged, []byte{}, 0o755)
+func TestApply_EmptyPath(t *testing.T) {
+	resetLinuxApplyState()
+	defer resetLinuxApplyState()
 
-	err := applyToExecutable(exe, emptyStaged)
+	err := applyStaged("")
 	testutil.ExpectedError(t, err)
 	testutil.ExpectedTrue(t, errors.Is(err, ErrUpdateNotReady))
 }
 
-func TestApplyToExecutable_Success(t *testing.T) {
-	tempDir := t.TempDir()
-	// Use path with space to verify space handling
-	subDir := filepath.Join(tempDir, "dir with space")
-	_ = os.MkdirAll(subDir, 0o755)
+func TestApply_EmptyFile(t *testing.T) {
+	resetLinuxApplyState()
+	defer resetLinuxApplyState()
 
-	exe := filepath.Join(subDir, "my app")
-	_ = os.WriteFile(exe, []byte("#!/bin/sh\nexit 0\n"), 0o755)
+	emptyDeb := filepath.Join(t.TempDir(), "empty.deb")
+	_ = os.WriteFile(emptyDeb, []byte{}, 0o644)
 
-	staged := filepath.Join(tempDir, "staged")
-	_ = os.WriteFile(staged, []byte("#!/bin/sh\nexit 0\n"), 0o755)
+	err := applyStaged(emptyDeb)
+	testutil.ExpectedError(t, err)
+	testutil.ExpectedTrue(t, errors.Is(err, ErrUpdateNotReady))
+}
 
-	err := applyToExecutable(exe, staged)
-	testutil.ExpectedNoError(t, err)
+func TestApply_NotDebFile(t *testing.T) {
+	resetLinuxApplyState()
+	defer resetLinuxApplyState()
 
-	// Wait up to 3 seconds for the updater script to execute replacement
-	replaced := false
-	for i := 0; i < 30; i++ {
-		time.Sleep(100 * time.Millisecond)
-		// If staged file was moved, replacement succeeded
-		if _, err := os.Stat(staged); os.IsNotExist(err) {
-			replaced = true
-			break
-		}
+	rawBin := filepath.Join(t.TempDir(), "app-binary")
+	_ = os.WriteFile(rawBin, []byte("binary data"), 0o755)
+
+	err := applyStaged(rawBin)
+	testutil.ExpectedError(t, err)
+	testutil.ExpectedTrue(t, errors.Is(err, ErrUpdateNotReady))
+}
+
+func TestApply_Success(t *testing.T) {
+	resetLinuxApplyState()
+	defer resetLinuxApplyState()
+
+	debFile := filepath.Join(t.TempDir(), "test-app.deb")
+	_ = os.WriteFile(debFile, []byte("fake deb package content"), 0o644)
+
+	var launchedPath string
+	launchDebInstallerFn = func(debPath string) error {
+		launchedPath = debPath
+		return nil
 	}
 
-	testutil.ExpectedTrue(t, replaced, "updater script did not replace the executable in time")
+	err := applyStaged(debFile)
+	testutil.ExpectedNoError(t, err)
+	testutil.ExpectedEqual(t, launchedPath, debFile)
+
+	// Second apply should return ErrUpdateInProgress
+	err2 := applyStaged(debFile)
+	testutil.ExpectedError(t, err2)
+	testutil.ExpectedTrue(t, errors.Is(err2, ErrUpdateInProgress))
+}
+
+func TestPlatformNeedsQuitAfterApply(t *testing.T) {
+	testutil.ExpectedTrue(t, PlatformNeedsQuitAfterApply())
 }

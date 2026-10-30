@@ -11,3 +11,4 @@ frontend/bindings
 package.json.md5
 package-lock.json
 coverage.out
+.task/*
