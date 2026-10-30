@@ -11,7 +11,7 @@ export default function UpdateBanner() {
 
   const showBanner =
     !info.seen &&
-    (["available", "downloading", "installing", "ready"].includes(info.state) || downloadOrInstallFailed);
+    (["available", "downloading", "verifying", "installing", "ready"].includes(info.state) || downloadOrInstallFailed);
 
   if (!showBanner) {
     return null;

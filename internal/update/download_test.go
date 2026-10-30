@@ -64,13 +64,17 @@ func TestDownloadViaProvider_Success(t *testing.T) {
 	}
 
 	var progressCalled bool
+	var verifyingCalled bool
 	result, err := downloadViaProvider(context.Background(), p, rel, asset, func(progress updater.Progress) {
 		progressCalled = true
+	}, func() {
+		verifyingCalled = true
 	})
 	testutil.ExpectedNoError(t, err)
 	defer os.RemoveAll(result.TempDir)
 
 	testutil.ExpectedTrue(t, progressCalled, "progress callback was never called")
+	testutil.ExpectedTrue(t, verifyingCalled, "verifying callback was never called")
 	testutil.ExpectedEqual(t, result.SHA256, payloadHash)
 	testutil.ExpectedEqual(t, result.Size, int64(len(payload)))
 

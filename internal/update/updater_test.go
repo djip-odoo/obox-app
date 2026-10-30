@@ -135,11 +135,11 @@ func TestUpdater_Lifecycle(t *testing.T) {
 
 	testutil.ExpectedTrue(t, progressReported, "progress was not reported during download")
 	testutil.ExpectedNotEqual(t, staged, "")
-	testutil.ExpectedEqual(t, u.lastestInfo.State, updater.StateAvailable)
+	testutil.ExpectedEqual(t, u.lastestInfo.State, updater.StateVerifying)
 
 	// 5. Duplicate download while staged
 	status := u.lastestInfo
-	testutil.ExpectedEqual(t, status.State, updater.StateAvailable)
+	testutil.ExpectedEqual(t, status.State, updater.StateVerifying)
 }
 
 func TestUpdater_ConcurrencyProtection(t *testing.T) {
