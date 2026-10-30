@@ -101,6 +101,9 @@ func main() {
 			Backdrop:                application.MacBackdropTranslucent,
 			TitleBar:                application.MacTitleBarHiddenInset,
 		},
+		Windows: application.WindowsWindow{
+			DisableIcon: true,
+		},
 	})
 
 	// Intercept window close: stay running in background as system tray (hidden, not minimized)
