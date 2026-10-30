@@ -32,12 +32,14 @@ type Updater interface {
 	Apply() error
 	Reset()
 	Info() Info
+	SetStatusListener(listener func(Info))
 }
 
 type updaterImpl struct {
-	mu            sync.Mutex
-	lastCheckTime time.Time
-	lastestInfo   Info
+	mu             sync.Mutex
+	lastCheckTime  time.Time
+	lastestInfo    Info
+	statusListener func(Info)
 
 	pending *updater.Release
 
@@ -63,9 +65,8 @@ var client = &http.Client{
 
 func newGitHubProvider() (*github.Provider, error) {
 	return github.New(github.Config{
-		Repository:    RepoOwner + "/" + RepoName,
-		HTTPClient:    client,
-		ChecksumAsset: "SHA256SUMS",
+		Repository: RepoOwner + "/" + RepoName,
+		HTTPClient: client,
 	})
 }
 
@@ -77,6 +78,26 @@ func New() Updater {
 			State:          updater.StateIdle,
 		},
 	}
+}
+
+func (u *updaterImpl) SetStatusListener(listener func(Info)) {
+	u.mu.Lock()
+	u.statusListener = listener
+	u.mu.Unlock()
+}
+
+func (u *updaterImpl) setState(s updater.State, errStr string) Info {
+	u.mu.Lock()
+	u.lastestInfo.State = s
+	u.lastestInfo.Error = errStr
+	info := u.lastestInfo
+	listener := u.statusListener
+	u.mu.Unlock()
+
+	if listener != nil {
+		listener(info)
+	}
+	return info
 }
 
 func (u *updaterImpl) Info() Info {
@@ -99,19 +120,17 @@ func (u *updaterImpl) Check(ctx context.Context) (Info, error) {
 		return u.lastestInfo, nil
 	}
 
-	u.lastestInfo.State = updater.StateChecking
 	currentVer := u.lastestInfo.CurrentVersion
 	u.mu.Unlock()
+
+	u.setState(updater.StateChecking, "")
 
 	logger.Infof("Checking for updates (current version: %s)", buildinfo.Version)
 
 	provider, err := newGitHubProvider()
 	if err != nil {
-		u.mu.Lock()
-		defer u.mu.Unlock()
-		u.lastestInfo.State = updater.StateError
-		u.lastestInfo.Error = "github provider not configured"
-		return u.lastestInfo, errors.New("github provider not configured")
+		logger.Warnf("Update check provider failed: %v", err)
+		return u.setState(updater.StateError, "github provider not configured"), errors.New("github provider not configured")
 	}
 
 	checkCtx, checkCancel := context.WithTimeout(ctx, 30*time.Second)
@@ -123,22 +142,20 @@ func (u *updaterImpl) Check(ctx context.Context) (Info, error) {
 		Arch:           runtime.GOARCH,
 	})
 
-	u.mu.Lock()
-	defer u.mu.Unlock()
-
 	if err != nil {
-		u.lastestInfo.State = updater.StateError
+		u.mu.Lock()
 		u.lastestInfo.LatestVersion = ""
-		u.lastestInfo.Error = err.Error()
+		u.mu.Unlock()
 		logger.Warnf("Update check failed: %v", err)
-		return u.lastestInfo, err
+		return u.setState(updater.StateError, err.Error()), err
 	}
 
 	if rel == nil {
-		u.lastestInfo.State = updater.StateIdle
+		u.mu.Lock()
 		u.lastCheckTime = time.Now()
-		logger.Debugf("Application is up to date (%s)", u.lastestInfo.CurrentVersion)
-		return u.lastestInfo, nil
+		u.mu.Unlock()
+		logger.Debugf("Application is up to date (%s)", currentVer)
+		return u.setState(updater.StateUpToDate, ""), nil
 	}
 
 	downloadURL, _ := rel.Metadata["github.asset.url"].(string)
@@ -151,16 +168,16 @@ func (u *updaterImpl) Check(ctx context.Context) (Info, error) {
 		asset.Digest = "sha256:" + hex.EncodeToString(rel.Verification.Digest)
 	}
 
+	u.mu.Lock()
 	u.pending = rel
 	u.appAsset = asset
-	u.lastestInfo.State = updater.StateAvailable
 	u.lastestInfo.LatestVersion = rel.Version
 	u.lastestInfo.Notes = sanitizeNotes(rel.Notes, defaultMaxNotesRunes)
-	u.lastestInfo.Error = ""
 	u.lastCheckTime = time.Now()
+	u.mu.Unlock()
 
-	logger.Debugf("New update available: %s -> %s (asset: %s)", u.lastestInfo.CurrentVersion, rel.Version, asset.Name)
-	return u.lastestInfo, nil
+	logger.Debugf("New update available: %s -> %s (asset: %s)", currentVer, rel.Version, asset.Name)
+	return u.setState(updater.StateAvailable, ""), nil
 }
 
 func (u *updaterImpl) Download(ctx context.Context, progress func(updater.Progress)) (string, error) {
@@ -214,9 +231,8 @@ func (u *updaterImpl) Download(ctx context.Context, progress func(updater.Progre
 
 	downloadCtx, cancel := context.WithCancel(ctx)
 	u.cancelDownload = cancel
-	u.lastestInfo.State = updater.StateDownloading
-	u.lastestInfo.Error = ""
 	u.mu.Unlock()
+	u.setState(updater.StateDownloading, "")
 
 	logger.Debugf("Starting update download workflow for %s (url: %s)", asset.Name, asset.DownloadURL)
 
@@ -227,18 +243,16 @@ func (u *updaterImpl) Download(ctx context.Context, progress func(updater.Progre
 		u.mu.Unlock()
 	}()
 
-	result, err := downloadViaProvider(downloadCtx, provider, pending, asset, progress)
-	u.mu.Lock()
-	defer u.mu.Unlock()
+	result, err := downloadViaProvider(downloadCtx, provider, pending, asset, progress, func() {
+		u.setState(updater.StateVerifying, "")
+	})
 
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
-			u.lastestInfo.State = updater.StateAvailable
-			u.lastestInfo.Error = ""
+			u.setState(updater.StateAvailable, "")
 			return "", err
 		}
-		u.lastestInfo.State = updater.StateError
-		u.lastestInfo.Error = err.Error()
+		u.setState(updater.StateError, err.Error())
 		return "", err
 	}
 
@@ -247,11 +261,11 @@ func (u *updaterImpl) Download(ctx context.Context, progress func(updater.Progre
 		if result != nil && result.TempDir != "" {
 			_ = os.RemoveAll(result.TempDir)
 		}
-		u.lastestInfo.State = updater.StateAvailable
-		u.lastestInfo.Error = ""
+		u.setState(updater.StateAvailable, "")
 		return "", downloadCtx.Err()
 	}
 
+	u.mu.Lock()
 	if u.stagedDir != "" && u.stagedDir != result.TempDir {
 		logger.Debugf("Cleaning up previous staged directory: %s", u.stagedDir)
 		_ = os.RemoveAll(u.stagedDir)
@@ -259,8 +273,7 @@ func (u *updaterImpl) Download(ctx context.Context, progress func(updater.Progre
 
 	u.stagedPath = result.StagedPath
 	u.stagedDir = result.TempDir
-	u.lastestInfo.State = updater.StateAvailable
-	u.lastestInfo.Error = ""
+	u.mu.Unlock()
 	logger.Debugf("Update successfully downloaded and staged at: %s (size: %d bytes)", result.StagedPath, result.Size)
 	return result.StagedPath, nil
 }
@@ -281,31 +294,29 @@ func (u *updaterImpl) Apply() error {
 
 	staged := u.stagedPath
 	stagedDir := u.stagedDir
-	u.lastestInfo.State = updater.StateInstalling
 	u.mu.Unlock()
+	u.setState(updater.StateInstalling, "")
 
 	logger.Infof("Installing update from staged file %s", staged)
 	if err := applyStaged(staged); err != nil {
 		logger.Errorf("Apply failed: %v", err)
-		u.mu.Lock()
-		u.lastestInfo.State = updater.StateError
-		u.lastestInfo.Error = err.Error()
 		if stagedDir != "" {
 			logger.Debugf("Removing staged directory after apply failure: %s", stagedDir)
 			_ = os.RemoveAll(stagedDir)
+			u.mu.Lock()
 			u.stagedDir = ""
 			u.stagedPath = ""
+			u.mu.Unlock()
 		}
-		u.mu.Unlock()
+		u.setState(updater.StateError, err.Error())
 		return fmt.Errorf("%w: %v", ErrInstallFailed, err)
 	}
 
 	u.mu.Lock()
-	u.lastestInfo.State = updater.StateReady
-	u.lastestInfo.Error = ""
 	u.stagedDir = ""
 	u.stagedPath = ""
 	u.mu.Unlock()
+	u.setState(updater.StateReady, "")
 
 	logger.Debugf("Apply successfully completed for staged file: %s", staged)
 	return nil
@@ -314,8 +325,6 @@ func (u *updaterImpl) Apply() error {
 // Reset returns the updater to updater.StateIdle or updater.StateAvailable if an update is available.
 func (u *updaterImpl) Reset() {
 	u.mu.Lock()
-	defer u.mu.Unlock()
-
 	logger.Debugf("Resetting updater state (current state: %s, hasStagedPath: %v)", u.lastestInfo.State, u.stagedPath != "")
 	if u.cancelDownload != nil {
 		logger.Debugf("Cancelling active download context")
@@ -325,18 +334,19 @@ func (u *updaterImpl) Reset() {
 
 	// Never delete the staged update directory or disrupt state while installation is in progress.
 	if u.lastestInfo.State == updater.StateInstalling {
+		u.mu.Unlock()
 		return
 	}
 
+	nextState := updater.StateIdle
 	if u.appAsset != nil {
-		u.lastestInfo.State = updater.StateAvailable
-	} else {
-		u.lastestInfo.State = updater.StateIdle
+		nextState = updater.StateAvailable
 	}
 
 	u.pending = nil
-	u.lastestInfo.Error = ""
 	u.lastCheckTime = time.Time{}
+	u.mu.Unlock()
+	u.setState(nextState, "")
 }
 
 func sanitizeNotes(notes string, maxRunes int) string {

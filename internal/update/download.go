@@ -69,7 +69,7 @@ func getUpdateCacheDir() string {
 	return cacheDir
 }
 
-func downloadViaProvider(ctx context.Context, p *github.Provider, rel *updater.Release, asset *Asset, progress func(updater.Progress)) (*DownloadResult, error) {
+func downloadViaProvider(ctx context.Context, p *github.Provider, rel *updater.Release, asset *Asset, progress func(updater.Progress), onVerifying ...func()) (*DownloadResult, error) {
 	tempDir, err := os.MkdirTemp(getUpdateCacheDir(), "obox-app-update-*")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create update temporary directory: %w", err)
@@ -137,6 +137,12 @@ func downloadViaProvider(ctx context.Context, p *github.Provider, rel *updater.R
 	if closeErr != nil {
 		_ = os.RemoveAll(tempDir)
 		return nil, closeErr
+	}
+
+	for _, fn := range onVerifying {
+		if fn != nil {
+			fn()
+		}
 	}
 
 	computedHash := hex.EncodeToString(hasher.Sum(nil))
