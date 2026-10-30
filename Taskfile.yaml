@@ -2,6 +2,9 @@ version: "3"
 
 vars:
   APP_NAME: "obox-app"
+  PRODUCT_NAME: "Obox App"
+  COMPANY_NAME: "Odoo"
+  COPYRIGHT: "(c) 2026, Odoo"
   VERSION:
     sh: git describe --tags --always --dirty 2>/dev/null || echo "dev"
   BUILD_TIME:
@@ -136,7 +139,7 @@ tasks:
       - mkdir -p {{.BIN_DIR}}
       - go build {{.WINDOWS_BUILD_FLAGS}} -o {{.BIN_DIR}}/{{.TARGET}}.exe .
       - rm -f app_windows_amd64.syso
-      - makensis '-DARG_WAILS_AMD64_BINARY=..\..\bin\{{.TARGET}}.exe' -DINFO_PRODUCTVERSION={{.VERSION}} build/windows/installer/project.nsi
+      - makensis '-DARG_WAILS_AMD64_BINARY=..\..\bin\{{.TARGET}}.exe' -DINFO_PROJECTNAME={{.APP_NAME}} '-DINFO_PRODUCTNAME={{.PRODUCT_NAME}}' '-DINFO_COMPANYNAME={{.COMPANY_NAME}}' '-DINFO_COPYRIGHT={{.COPYRIGHT}}' -DPRODUCT_EXECUTABLE={{.APP_NAME}}.exe -DINFO_PRODUCTVERSION={{.VERSION}} build/windows/installer/project.nsi
       - rm -rf build/windows/installer/tmp
       - mv build/bin/*-installer.exe {{.BIN_DIR}}/{{.TARGET}}-installer.exe
       - rm -f {{.BIN_DIR}}/{{.TARGET}}.exe
