@@ -1,0 +1,197 @@
+version: "3"
+
+vars:
+  APP_NAME: "obox-app"
+  VERSION:
+    sh: git describe --tags --always --dirty 2>/dev/null || echo "dev"
+  BUILD_TIME:
+    sh: date -u +"%Y-%m-%dT%H:%M:%SZ"
+  COMMIT:
+    sh: git rev-parse --short HEAD 2>/dev/null || echo "unknown"
+  BUILD_FLAGS: '-tags "desktop,production" -ldflags "-X obox-app/buildinfo.Version={{.VERSION}} -X obox-app/buildinfo.BuildTime={{.BUILD_TIME}} -X obox-app/buildinfo.Commit={{.COMMIT}} -s -w"'
+  WINDOWS_BUILD_FLAGS: '-tags "desktop,production" -ldflags "-X obox-app/buildinfo.Version={{.VERSION}} -X obox-app/buildinfo.BuildTime={{.BUILD_TIME}} -X obox-app/buildinfo.Commit={{.COMMIT}} -s -w -H windowsgui"'
+  BIN_DIR: "build/bin"
+
+tasks:
+  default:
+    desc: List available tasks
+    cmds:
+      - task --list
+
+  # ── Development ────────────────────────────────────────────────────────────
+  dev:
+    desc: Run app in development mode with live hot-reloading
+    cmds:
+      - task: generate:bindings
+      - wails3 dev -port 5173
+
+  generate:bindings:
+    desc: Generate TypeScript bindings from Go service methods
+    dir: .
+    cmds:
+      - wails3 generate bindings -ts
+
+  generate:syso:windows:
+    desc: Generate Windows .syso resource file containing application icon and manifest
+    cmds:
+      - wails3 generate syso -arch amd64 -icon build/windows/icon.ico -info build/windows/info.json -manifest build/windows/wails.exe.manifest -out app_windows_amd64.syso
+
+  generate:webview2bootstrapper:
+    desc: Download Microsoft WebView2 setup bootstrapper for Windows NSIS installer
+    cmds:
+      - mkdir -p build/windows/installer/tmp
+      - wails3 generate webview2bootstrapper -dir build/windows/installer/tmp
+
+  lint:
+    desc: Run code formatting and linter checks
+    cmds:
+      - test -z "$(gofmt -s -l .)" || (echo "Unformatted Go files exist. Run 'task lint:fix'" && exit 1)
+      - npm --prefix frontend run typecheck
+      - npm --prefix frontend run lint
+
+  lint:fix:
+    desc: Automatically format Go code and fix frontend lint issues
+    cmds:
+      - gofmt -s -w .
+      - npm --prefix frontend run lint:fix
+
+  test:
+    desc: Run all Go unit and integration tests (needs frontend/dist for go:embed)
+    deps: [frontend:build]
+    cmds:
+      - go test -v ./...
+
+  clean:
+    desc: Remove build artifacts and temporary files
+    cmds:
+      - rm -rf {{.BIN_DIR}} bin/ frontend/dist/ coverage.out *.syso build/windows/installer/tmp
+
+  # ── Frontend ──────────────────────────────────────────────────────────────
+  frontend:install:
+    desc: Install frontend dependencies
+    dir: frontend
+    sources:
+      - package.json
+      - package-lock.json
+    generates:
+      - node_modules/.package-lock.json
+    cmds:
+      - 'if [ -f package-lock.json ]; then npm ci; else npm install; fi'
+
+  frontend:build:
+    desc: Compile TypeScript and bundle frontend assets
+    dir: frontend
+    cmds:
+      - task: generate:bindings
+      - task: frontend:install
+      - npm run build
+
+  # ── CI & Environment Setup ────────────────────────────────────────────────
+  ci:deps:wails:
+    desc: Install Wails v3 CLI tool
+    vars:
+      WAILS_VER:
+        sh: '{{if .WAILS_VERSION}}echo {{.WAILS_VERSION}}{{else}}go list -m -f "{{"{{.Version}}"}}" github.com/wailsapp/wails/v3 2>/dev/null || echo latest{{end}}'
+    cmds:
+      - go install github.com/wailsapp/wails/v3/cmd/wails3@{{.WAILS_VER}}
+
+  ci:deps:linux:
+    desc: Install Linux system build dependencies (Ubuntu/Debian)
+    cmds:
+      - sudo apt-get update
+      - sudo apt-get install -y libgtk-4-dev libwebkitgtk-6.0-dev gcc-aarch64-linux-gnu libusb-1.0-0-dev
+
+  ci:deps:darwin:
+    desc: Install macOS system build dependencies
+    cmds:
+      - brew install libusb
+
+  # ── Production Builds ─────────────────────────────────────────────────────
+  build:
+    desc: Build production binary for current platform
+    deps: [frontend:build]
+    cmds:
+      - mkdir -p {{.BIN_DIR}}
+      - go build {{.BUILD_FLAGS}} -o {{.BIN_DIR}}/{{.APP_NAME}} .
+
+  build:linux:
+    desc: Build Linux binary (amd64)
+    deps: [frontend:build]
+    vars:
+      TARGET: '{{default "obox-app-linux-amd64" .BUILD_NAME}}'
+    cmds:
+      - mkdir -p {{.BIN_DIR}}
+      - go build {{.BUILD_FLAGS}} -o {{.BIN_DIR}}/{{.TARGET}}-{{.VERSION}} .
+      - chmod +x {{.BIN_DIR}}/{{.TARGET}}-{{.VERSION}}
+      - cp {{.BIN_DIR}}/{{.TARGET}}-{{.VERSION}} {{.BIN_DIR}}/obox-app-linux-amd64
+
+  build:windows:
+    desc: Build Windows binary and installer (amd64)
+    deps: [frontend:build, generate:syso:windows, generate:webview2bootstrapper]
+    vars:
+      TARGET: '{{default "obox-app-windows-amd64" .BUILD_NAME}}'
+    # CGO_ENABLED / CGO_CFLAGS / CGO_LDFLAGS must be set by the caller (the CI action
+    # sets them at step level so MSYS2 converts the paths). Locally, run from an MSYS2 shell.
+    cmds:
+      - mkdir -p {{.BIN_DIR}}
+      - go build {{.WINDOWS_BUILD_FLAGS}} -o {{.BIN_DIR}}/{{.TARGET}}.exe .
+      - rm -f app_windows_amd64.syso
+      - makensis '-DARG_WAILS_AMD64_BINARY=..\..\bin\{{.TARGET}}.exe' -DINFO_PRODUCTVERSION={{.VERSION}} build/windows/installer/project.nsi
+      - rm -rf build/windows/installer/tmp
+      - mv build/bin/*-installer.exe {{.BIN_DIR}}/{{.TARGET}}-installer.exe
+      - rm -f {{.BIN_DIR}}/{{.TARGET}}.exe
+
+  sign:windows:
+    desc: Sign the Windows installer with signtool (expects SIGNTOOL, WINDOWS_CERT_FILE, WINDOWS_CERT_PASSWORD in env)
+    vars:
+      TARGET: '{{default "obox-app-windows-amd64" .BUILD_NAME}}'
+    preconditions:
+      - test -f {{.BIN_DIR}}/{{.TARGET}}-installer.exe
+    cmds:
+      - cmd: |
+          : "${SIGNTOOL:?SIGNTOOL is required}" "${WINDOWS_CERT_FILE:?WINDOWS_CERT_FILE is required}" "${WINDOWS_CERT_PASSWORD:?WINDOWS_CERT_PASSWORD is required}"
+          "$SIGNTOOL" sign /fd sha256 /td sha256 /tr http://ts.ssl.com /f "$WINDOWS_CERT_FILE" /p "$WINDOWS_CERT_PASSWORD" {{.BIN_DIR}}/{{.TARGET}}-installer.exe
+        silent: true
+
+  build:darwin:
+    desc: Build macOS application bundle (universal/arm64)
+    deps: [frontend:build]
+    vars:
+      TARGET: '{{default "obox-app-darwin-arm64" .BUILD_NAME}}'
+    cmds:
+      - mkdir -p {{.BIN_DIR}}
+      - ./build/build-darwin.sh
+
+  sign:darwin:
+    desc: Sign and notarize macOS bundle (expects SIGN_IDENTITY, APPLE_ID, APPLE_APP_PASSWORD, TEAM_ID in env)
+    cmds:
+      - cmd: |
+          : "${SIGN_IDENTITY:?SIGN_IDENTITY is required}" "${APPLE_ID:?APPLE_ID is required}" "${APPLE_APP_PASSWORD:?APPLE_APP_PASSWORD is required}" "${TEAM_ID:?TEAM_ID is required}"
+          ./build/build-darwin.sh --apple-id "$APPLE_ID" --team-id "$TEAM_ID" --app-password "$APPLE_APP_PASSWORD" --sign-identity "$SIGN_IDENTITY"
+        silent: true
+
+  # ── Packaging & Release ───────────────────────────────────────────────────
+  package:
+    desc: Package production application for current platform
+    cmds:
+      - '{{if eq OS "windows"}}task build:windows{{else if eq OS "darwin"}}task build:darwin{{else}}task package:deb{{end}}'
+
+  package:deb:
+    desc: Build Linux .deb package and binary for release
+    deps: [build:linux]
+    vars:
+      TARGET: '{{default "obox-app-linux-amd64" .BUILD_NAME}}'
+    env:
+      VERSION: '{{.VERSION}}'
+    cmds:
+      - mkdir -p {{.BIN_DIR}}
+      - wails3 generate .desktop -name "Obox App" -exec "/usr/bin/{{.APP_NAME}}" -icon "{{.APP_NAME}}" -outputfile "{{.BIN_DIR}}/{{.APP_NAME}}.desktop" -categories "Utility;Office;" -comment "POS Printer Proxy for Odoo"
+      - wails3 tool package -name "{{.APP_NAME}}" -format deb -config build/linux/nfpm/nfpm.yaml -out "{{.BIN_DIR}}"
+      - mv {{.BIN_DIR}}/{{.APP_NAME}}*.deb {{.BIN_DIR}}/{{.TARGET}}-{{.VERSION}}.deb
+      - rm -f {{.BIN_DIR}}/{{.APP_NAME}}.desktop
+      - rm -f {{.BIN_DIR}}/obox-app-linux-amd64
+
+  build:ci:
+    desc: Build production packages according to runner OS
+    cmds:
+      - '{{if eq OS "windows"}}task build:windows BUILD_NAME={{default "obox-app-windows-amd64" .BUILD_NAME}}{{else if eq OS "darwin"}}task build:darwin BUILD_NAME={{default "obox-app-darwin-arm64" .BUILD_NAME}}{{else}}task package:deb BUILD_NAME={{default "obox-app-linux-amd64" .BUILD_NAME}}{{end}}'
