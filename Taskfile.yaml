@@ -193,6 +193,7 @@ tasks:
       - mv {{.BIN_DIR}}/{{.APP_NAME}}*.deb {{.BIN_DIR}}/{{.TARGET}}-{{.VERSION}}.deb
       - rm -f {{.BIN_DIR}}/{{.APP_NAME}}.desktop
       - rm -f {{.BIN_DIR}}/obox-app-linux-amd64
+      - mv {{.BIN_DIR}}/{{.TARGET}}-{{.VERSION}} {{.BIN_DIR}}/{{.APP_NAME}}-linux-binary-{{.VERSION}}
 
   build:ci:
     desc: Build production packages according to runner OS
