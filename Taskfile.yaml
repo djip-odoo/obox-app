@@ -6,7 +6,7 @@ vars:
   COMPANY_NAME: "Odoo"
   COPYRIGHT: "(c) 2026, Odoo"
   VERSION:
-    sh: git describe --tags --always --dirty 2>/dev/null || echo "dev"
+    sh: git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dirty"
   BUILD_TIME:
     sh: date -u +"%Y-%m-%dT%H:%M:%SZ"
   COMMIT:
