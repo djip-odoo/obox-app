@@ -79,16 +79,9 @@ for tool in go node npm task gcc makensis wails3; do
     fi
 done
 
-# 5. Resolve version for NSIS compatibility
-# NSIS VIProductVersion requires a numeric format (e.g. 1.0.0).
-# If the git tag is non-numeric or missing (e.g. "dev" or commit hash), fallback to 1.0.0.
+# 5. Resolve version
 CURRENT_VER="$(git describe --tags --always 2>/dev/null || echo "dev")"
-if [[ "${CURRENT_VER}" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]]; then
-    BUILD_VERSION="${VERSION:-${CURRENT_VER}}"
-else
-    BUILD_VERSION="${VERSION:-1.0.0}"
-    echo "==> Non-semver git tag detected ('${CURRENT_VER}'). Using version '${BUILD_VERSION}' for NSIS installer."
-fi
+BUILD_VERSION="${VERSION:-${CURRENT_VER}}"
 
 # 6. Execute Build
 echo "==> Building Windows binary and NSIS installer (version: ${BUILD_VERSION})..."

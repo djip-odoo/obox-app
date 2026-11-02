@@ -19,12 +19,24 @@ Unicode true
 ####
 ## The following information is taken from the ProjectInfo file, but they can be overwritten here.
 ####
-!define INFO_PROJECTNAME    "obox-app"
-!define INFO_COMPANYNAME    "Odoo"
-!define INFO_PRODUCTNAME    "Obox App"
-!define INFO_COPYRIGHT      "(c) 2026, Odoo"
-!define PRODUCT_EXECUTABLE  "obox-app.exe"
-!define UNINST_KEY_NAME     "OdooOboxApp"
+!ifndef INFO_PROJECTNAME
+    !define INFO_PROJECTNAME    "obox-app"
+!endif
+!ifndef INFO_COMPANYNAME
+    !define INFO_COMPANYNAME    "Odoo"
+!endif
+!ifndef INFO_PRODUCTNAME
+    !define INFO_PRODUCTNAME    "Obox App"
+!endif
+!ifndef INFO_COPYRIGHT
+    !define INFO_COPYRIGHT      "(c) 2026, Odoo"
+!endif
+!ifndef PRODUCT_EXECUTABLE
+    !define PRODUCT_EXECUTABLE  "obox-app.exe"
+!endif
+!ifndef UNINST_KEY_NAME
+    !define UNINST_KEY_NAME     "OdooOboxApp"
+!endif
 ####
 ## !define REQUEST_EXECUTION_LEVEL "admin"            # Default "admin"  see also https://nsis.sourceforge.io/Docs/Chapter4.html
 ####
