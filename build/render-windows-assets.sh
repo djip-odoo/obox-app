@@ -46,12 +46,3 @@ sed \
   -e "s|com\.wails\.{{[.]Name}}|${IDENTIFIER}|g" \
   -e "s|{{\.Name}}|${APP_NAME}|g" \
   "${PROJECT_DIR}/build/windows/wails.exe.manifest" > "${OUTPUT_DIR}/wails.exe.manifest"
-
-# 3. Render wails_tools.nsh
-sed \
-  -e "s|{{\.Name}}|${APP_NAME}|g" \
-  -e "s|{{\.Info\.CompanyName}}|${COMPANY_NAME}|g" \
-  -e "s|{{\.Info\.ProductName}}|${PRODUCT_NAME}|g" \
-  -e "s|{{\.Info\.ProductVersion}}|${BUILD_SEMVER}|g" \
-  -e "s|{{\.Info\.Copyright}}|${COPYRIGHT}|g" \
-  "${PROJECT_DIR}/build/windows/installer/wails_tools.nsh" > "${OUTPUT_DIR}/wails_tools.nsh"

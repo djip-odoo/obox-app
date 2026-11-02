@@ -1,0 +1,26 @@
+{
+	"fixed": {
+		"file_version": "1.0.5",
+		"product_version": "1.0.5"
+	},
+	"info": {
+		"0409": {
+			"FileVersion": "1.0.5",
+			"ProductVersion": "1.0.5",
+			"CompanyName": "Odoo",
+			"FileDescription": "Obox App",
+			"LegalCopyright": "(c) 2026, Odoo",
+			"ProductName": "Obox App",
+			"Comments": "POS Printer Proxy for Odoo"
+		},
+		"0000": {
+			"FileVersion": "1.0.5",
+			"ProductVersion": "1.0.5",
+			"CompanyName": "Odoo",
+			"FileDescription": "Obox App",
+			"LegalCopyright": "(c) 2026, Odoo",
+			"ProductName": "Obox App",
+			"Comments": "POS Printer Proxy for Odoo"
+		}
+	}
+}
